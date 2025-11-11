@@ -1,0 +1,113 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // change to "mysql" or "sqlite" if you’re using those
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  users           User[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement())
+  key             String           @unique
+  name            String
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           Int      @id @default(autoincrement())
+  roleId       Int
+  permissionId Int
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model User {
+  id                 Int      @id @default(autoincrement())
+  email              String   @unique
+  password           String
+  firstName          String?
+  lastName           String?
+  mustChangePassword Boolean  @default(false)
+  roleId             Int
+  role               Role     @relation(fields: [roleId], references: [id])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Supplier {
+  id       Int       @id @default(autoincrement())
+  name     String
+  email    String
+  phone    String
+  address  String
+  products Product[]
+  invoices Invoice[]
+}
+
+model Buyer {
+  id       Int       @id @default(autoincrement())
+  name     String
+  email    String
+  phone    String
+  address  String
+  invoices Invoice[]
+}
+
+model Product {
+  id           Int           @id @default(autoincrement())
+  sku          String        @unique
+  title        String
+  description  String?
+  category     String?
+  price        Float
+  stock        Int
+  supplierId   Int?
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+  invoiceItems InvoiceItem[]
+  createdAt    DateTime      @default(now())
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  invoiceNo     String   @unique
+  buyerId       Int
+  supplierId    Int
+  paymentMethod String
+  total         Float
+  status        String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  buyer    Buyer         @relation(fields: [buyerId], references: [id])
+  supplier Supplier      @relation(fields: [supplierId], references: [id])
+  items    InvoiceItem[]
+}
+
+model InvoiceItem {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  qty         Int
+  price       Float
+  gst         Float
+  amount      Float
+  productId   Int?
+  invoiceId   Int
+  product     Product? @relation(fields: [productId], references: [id])
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+}

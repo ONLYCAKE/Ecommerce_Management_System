@@ -1,0 +1,24 @@
+-- DropForeignKey
+ALTER TABLE "postgres"."Product" DROP CONSTRAINT "Product_supplierId_fkey";
+
+-- AlterTable
+ALTER TABLE "Product" ALTER COLUMN "description" DROP NOT NULL,
+ALTER COLUMN "supplierId" DROP NOT NULL,
+ALTER COLUMN "category" DROP NOT NULL,
+ALTER COLUMN "createdAt" SET DATA TYPE TIMESTAMP(3);
+
+-- AlterTable
+ALTER TABLE "Role" ALTER COLUMN "createdAt" SET DATA TYPE TIMESTAMP(3);
+
+-- AlterTable
+ALTER TABLE "RolePermission" ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- AlterTable
+ALTER TABLE "User" ALTER COLUMN "firstName" DROP NOT NULL,
+ALTER COLUMN "lastName" DROP NOT NULL,
+ALTER COLUMN "createdAt" SET DATA TYPE TIMESTAMP(3),
+ALTER COLUMN "updatedAt" DROP DEFAULT,
+ALTER COLUMN "updatedAt" SET DATA TYPE TIMESTAMP(3);
+
+-- AddForeignKey
+ALTER TABLE "Product" ADD CONSTRAINT "Product_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE SET NULL ON UPDATE CASCADE;

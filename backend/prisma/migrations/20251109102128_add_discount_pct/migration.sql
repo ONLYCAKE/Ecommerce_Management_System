@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Invoice" ADD COLUMN     "serviceCharge" DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "InvoiceItem" ADD COLUMN     "discountPct" DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #2563EB;     /* Blue-600 */
+  --secondary: #1E40AF;   /* Blue-800 */
+  --bg: #F8FAFC;          /* Light app background */
+  --card-bg: #FFFFFF;     /* Light cards */
+  --hover-bg: #F1F5F9;    /* Hover states */
+  --border: rgba(0, 0, 0, 0.1);
+  --text: #0F172A;        /* Nearly black */
+  --text-dim: #475569;
+  --success: #10B981;
+  --error: #EF4444;
+  --warning: #F59E0B;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', 'Poppins', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  letter-spacing: .01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Card + Input Styling */
+.card { background-color: var(--card-bg); @apply rounded-2xl shadow-md; border: 1px solid var(--border); }
+.input { @apply w-full rounded-lg px-3 py-2 focus:outline-none; background-color: var(--card-bg); border: 1px solid var(--border); color: var(--text); }
+.input:focus { box-shadow: 0 0 0 2px var(--primary); border-color: var(--primary); }
+
+/* ✨ Unified Button Styling */
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.75rem; /* rounded-xl */
+  padding: 0.5rem 1.25rem; /* px-5 py-2 */
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease-in-out;
+}
+.btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* Secondary (gray) button – for Cancel/Back actions */
+.btn-secondary {
+  background-color: var(--hover-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.25rem;
+  transition: all 0.2s ease-in-out;
+}
+.btn-secondary:hover {
+  background-color: #E2E8F0;
+}
+
+/* Danger (red) button – optional */
+.btn-danger {
+  background: linear-gradient(135deg, #EF4444, #991B1B);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.25rem;
+  box-shadow: 0 3px 8px rgba(239, 68, 68, 0.25);
+  transition: all 0.2s ease-in-out;
+}
+.btn-danger:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* Table */
+.table { @apply w-full text-sm; border-collapse: separate; border-spacing: 0 0; }
+.table thead th { @apply uppercase text-xs font-semibold tracking-wider; background-color: var(--hover-bg); color: var(--primary); }
+.table td { @apply py-3; }
+.table tbody tr { color: var(--text-dim); }
+.table tbody tr:hover { background-color: var(--hover-bg); transition: all .2s ease; }
+
+/* Typography */
+h1 { @apply text-3xl font-semibold; color: var(--primary); }
+h2 { @apply text-2xl font-semibold; color: var(--primary); }
+p, td, th, input, button { color: var(--text); @apply font-medium; }
+
+/* Animations */
+.toast { @apply transition-all duration-300 ease-in-out; transform: translateY(10px); opacity: 0.95; }
+.modal-enter { @apply transition-all duration-300 ease-in-out; transform: translateY(6px); opacity: 0.98; }
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn { animation: fadeIn .3s ease-in-out; }

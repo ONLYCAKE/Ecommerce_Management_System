@@ -1,0 +1,197 @@
+/* Minimalist Invoice Template (CSS-only)
+   A4 printable, black & white with optional light gray lines
+   Fonts: Montserrat (title), Poppins (headings), Roboto (body)
+*/
+
+/* Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Poppins:wght@500;600&family=Roboto:wght@400;500&display=swap');
+
+:root {
+  --ink: #111111;
+  --muted: #444444;
+  --line: #E5E5E5; /* light gray lines */
+  --bg: #ffffff;
+}
+
+/* Page setup */
+@page {
+  size: A4;
+  margin: 18mm 16mm 18mm 16mm; /* top right bottom left */
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Roboto', system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Layout container */
+.invoice {
+  max-width: 794px; /* A4 width at 96dpi approx */
+  margin: 0 auto;
+}
+
+/* Top title */
+.invoice__title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: 0.18em;
+  text-align: center;
+  margin: 12px 0 20px;
+}
+
+/* Thin line above title */
+.invoice__rule {
+  height: 1px;
+  width: 100%;
+  background: var(--ink);
+  opacity: 0.12;
+  margin: 6px 0 8px;
+}
+
+/* Header block */
+.invoice__header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: start;
+  margin-top: 8px;
+}
+
+.invoice__company {
+  white-space: pre-line;
+  line-height: 1.45;
+}
+.invoice__companyName {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+}
+.invoice__companyAddr {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.invoice__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 6px;
+  font-size: 12px;
+}
+.invoice__meta dt { color: var(--muted); }
+.invoice__meta dd { font-weight: 500; }
+
+/* Client (Billed To) */
+.invoice__client {
+  margin-top: 18px;
+}
+.invoice__sectionTitle {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: .06em;
+  margin: 0 0 6px;
+}
+.invoice__clientBox {
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+.invoice__clientLine {
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+/* Items table */
+.invoice__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 12px;
+}
+.invoice__table thead th {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  text-transform: none;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
+}
+.invoice__table thead th.is-right { text-align: right; }
+
+.invoice__table tbody tr:nth-child(odd) {
+  background: #fafafa;
+}
+.invoice__table tbody td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 8px;
+  vertical-align: top;
+}
+.invoice__table tbody td.is-right { text-align: right; }
+.invoice__table tfoot td {
+  padding: 8px;
+}
+
+/* Summary (bottom-right) */
+.invoice__summary {
+  margin-top: 14px;
+  margin-left: auto;
+  width: 320px;
+}
+.invoice__summaryRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  padding: 6px 4px;
+}
+.invoice__summaryRow.is-total {
+  border-top: 2px solid var(--ink);
+  margin-top: 4px;
+  padding-top: 10px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* Footer & signature */
+.invoice__footer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  margin-top: 28px;
+  align-items: end;
+}
+.invoice__thanks {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 11px;
+}
+.invoice__sign {
+  text-align: right;
+}
+.invoice__signLabel {
+  font-size: 11px;
+  margin-top: 48px;
+  border-top: 1px solid var(--ink);
+  display: inline-block;
+  padding-top: 6px;
+}
+
+/* Utility widths for columns */
+.col-no { width: 36px; }
+.col-desc { width: auto; }
+.col-unit { width: 110px; }
+.col-qty { width: 56px; }
+.col-disc { width: 92px; }
+.col-gst { width: 76px; }
+.col-total { width: 120px; }
+
+/* Print rules */
+@media print {
+  body { margin: 0; }
+  .no-print { display: none !important; }
+  .invoice { page-break-after: auto; }
+  .invoice__table tr { page-break-inside: avoid; }
+}
