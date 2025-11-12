@@ -3,6 +3,7 @@ import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { canCreate, canUpdate, canDelete } from '../utils/rbac'
 import { useConfirm } from '../context/ConfirmContext'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 export default function Users() {
   const [items, setItems] = useState([])
@@ -14,7 +15,13 @@ export default function Users() {
   const [roles, setRoles] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ email: '', firstName: '', lastName: '', password: '', roleId: null })
+  const [form, setForm] = useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    password: '',
+    roleId: null,
+  })
   const { user } = useAuth()
   const confirmModal = useConfirm()
 
@@ -29,19 +36,25 @@ export default function Users() {
     }
   }
 
-  useEffect(() => { fetchData() }, [archived])
+  useEffect(() => {
+    fetchData()
+  }, [archived])
 
-  // ✅ Roles
+  // ✅ Fetch roles
   useEffect(() => {
     (async () => {
-      const { data } = await api.get('/roles')
-      setRoles(data)
+      try {
+        const { data } = await api.get('/roles')
+        setRoles(data)
+      } catch (err) {
+        console.error('Error loading roles', err)
+      }
     })()
   }, [])
 
   // ✅ Search Filter
   useEffect(() => {
-    const f = items.filter(u =>
+    const f = items.filter((u) =>
       [u.email, u.firstName, u.lastName, u.role?.name]
         .join(' ')
         .toLowerCase()
@@ -56,9 +69,15 @@ export default function Users() {
   const currentPageData = filtered.slice(start, start + pageSize)
 
   const openCreate = () => {
-    const def = roles.find(r => r.name === 'Employee') || roles[0]
+    const def = roles.find((r) => r.name === 'Employee') || roles[0]
     setEditing(null)
-    setForm({ email: '', firstName: '', lastName: '', password: '', roleId: def?.id || null })
+    setForm({
+      email: '',
+      firstName: '',
+      lastName: '',
+      password: '',
+      roleId: def?.id || null,
+    })
     setShowForm(true)
   }
 
@@ -69,7 +88,7 @@ export default function Users() {
       firstName: u.firstName,
       lastName: u.lastName,
       password: '',
-      roleId: u.roleId || u.role?.id
+      roleId: u.roleId || u.role?.id,
     })
     setShowForm(true)
   }
@@ -90,14 +109,20 @@ export default function Users() {
   }
 
   const archive = async (id) => {
-    const ok = await confirmModal({ title: 'Archive user?', description: 'This will archive the user.' })
+    const ok = await confirmModal({
+      title: 'Archive user?',
+      description: 'This will archive the user.',
+    })
     if (!ok) return
     await api.delete(`/users/${id}`)
     fetchData()
   }
 
   const restoreUser = async (id) => {
-    const ok = await confirmModal({ title: 'Restore user?', description: 'This will unarchive the user and make them active again.' })
+    const ok = await confirmModal({
+      title: 'Restore user?',
+      description: 'This will unarchive the user and make them active again.',
+    })
     if (!ok) return
     await api.patch(`/users/${id}/restore`)
     fetchData()
@@ -144,6 +169,7 @@ export default function Users() {
               </option>
             ))}
           </select>
+
           {canCreate(user.role) && (
             <button className="btn-primary" onClick={openCreate}>
               Add User
@@ -168,7 +194,9 @@ export default function Users() {
             {currentPageData.map((u) => (
               <tr key={u.id} className="border-t">
                 <td>{u.email}</td>
-                <td>{u.firstName} {u.lastName}</td>
+                <td>
+                  {u.firstName} {u.lastName}
+                </td>
                 <td>
                   <span
                     className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -182,18 +210,33 @@ export default function Users() {
                     {u.role?.name}
                   </span>
                 </td>
-                <td>{u.isArchived ? <span className="text-red-600">Archived</span> : 'Active'}</td>
+                <td>
+                  {u.isArchived ? (
+                    <span className="text-red-600">Archived</span>
+                  ) : (
+                    'Active'
+                  )}
+                </td>
                 <td className="text-center space-x-2">
-                  {canUpdate(user.role) && !u.isArchived && (
-                    <button className="btn-secondary" onClick={() => openEdit(u)}>Edit</button>
+                  {canUpdate(user.role, 'user.update') && !u.isArchived && (
+                    <button className="btn-secondary" onClick={() => openEdit(u)}>
+                      Edit
+                    </button>
                   )}
-                  {canDelete(user.role) && (
-                    u.isArchived ? (
-                      <button className="btn-restore" onClick={() => restoreUser(u.id)}>Restore</button>
+
+                  {canDelete(user.role, 'user.delete') &&
+                    (u.isArchived ? (
+                      <button className="btn-restore" onClick={() => restoreUser(u.id)}>
+                        Restore
+                      </button>
                     ) : (
-                      <button className="btn btn-secondary text-white" onClick={() => archive(u.id)}>Archive</button>
-                    )
-                  )}
+                      <button
+                        className="btn btn-secondary text-white"
+                        onClick={() => archive(u.id)}
+                      >
+                        Archive
+                      </button>
+                    ))}
                 </td>
               </tr>
             ))}
@@ -205,17 +248,45 @@ export default function Users() {
           <div className="text-sm text-gray-500 py-6 text-center">No users found.</div>
         )}
 
-        {/* ✅ Inline Pagination */}
+        {/* ✅ Inline Pagination (Icon-Only) */}
         {filtered.length > 0 && (
           <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <span className="text-sm text-gray-600">
-                Page {page} of {Math.max(1, Math.ceil(filtered.length / pageSize))}
+                Page {page} of {totalPages}
               </span>
-              <button className="btn-secondary" disabled={page === 1} onClick={() => setPage(1)}>{'<<'}</button>
-              <button className="btn-secondary" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>{'<'}</button>
-              <button className="btn-secondary" disabled={page >= Math.ceil(filtered.length / pageSize)} onClick={() => setPage((p) => Math.min(Math.ceil(filtered.length / pageSize) || 1, p + 1))}>{'>'}</button>
-              <button className="btn-secondary" disabled={page >= Math.ceil(filtered.length / pageSize)} onClick={() => setPage(Math.max(1, Math.ceil(filtered.length / pageSize)))}>{'>>'}</button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+              >
+                <ChevronsLeft size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <ChevronRight size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+              >
+                <ChevronsRight size={18} className="text-gray-700" />
+              </button>
             </div>
           </div>
         )}
@@ -297,7 +368,11 @@ export default function Users() {
 
               {/* Actions */}
               <div className="flex justify-end gap-2 mt-6">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowForm(false)}
+                >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary">

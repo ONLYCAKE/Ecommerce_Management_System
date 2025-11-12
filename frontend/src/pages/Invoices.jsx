@@ -18,7 +18,7 @@ export default function Invoices() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
-  const canCreate = useMemo(() => (user?.permissions || []).includes('invoices.create'), [user])
+  const canCreate = useMemo(() => (user?.permissions || []).includes('invoice.create') || user?.role === 'SuperAdmin', [user])
 
   // ✅ Load invoices
   const load = async () => {

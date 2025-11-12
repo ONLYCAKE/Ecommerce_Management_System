@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
-import { canCreate, canUpdate, canDelete } from '../utils/rbac'
+import { canCreate, canUpdate, canDelete } from '../utils/permissions'
 import { useConfirm } from '../context/ConfirmContext'
 
 export default function Roles() {
@@ -78,7 +78,7 @@ export default function Roles() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-lg font-semibold">Roles</h1>
-        {canCreate(user.role) && user.role === 'SuperAdmin' && (
+        {canCreate('role') && (
           <button className="btn-primary" onClick={() => open(null)}>
             Add Role
           </button>
@@ -103,7 +103,7 @@ export default function Roles() {
                   {r.RolePermission?.map((rp) => rp.permission?.key).join(', ') || '-'}
                 </td>
                 <td className="text-right space-x-2">
-                  {(user.role === 'SuperAdmin' || (user.role === 'Admin' && r.name === 'Employee')) && (
+                  {(canUpdate('role') || canDelete('role')) && (
                     <>
                       <button
                         className="btn-secondary"

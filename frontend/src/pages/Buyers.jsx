@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
-import { canCreate, canUpdate, canDelete } from '../utils/rbac'
+import { canCreate, canUpdate, canDelete } from '../utils/permissions'
 import { useConfirm } from '../context/ConfirmContext'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 export default function Buyers() {
   const [items, setItems] = useState([])
@@ -16,12 +17,31 @@ export default function Buyers() {
   const { user } = useAuth()
   const confirmModal = useConfirm()
 
+  // 🔹 Fetch all buyers
   const fetchAll = async () => {
-    const { data } = await api.get('/buyers', { params: { q } })
+    const { data } = await api.get('/buyers')
     setItems(data)
   }
-  useEffect(() => { fetchAll() }, [q])
+  useEffect(() => { fetchAll() }, [])
 
+  // 🔹 Search + Filter Logic
+  const filteredAndSorted = useMemo(() => {
+    return items.filter(buyer =>
+      Object.values(buyer)
+        .join(' ')
+        .toLowerCase()
+        .includes(q.toLowerCase())
+    )
+  }, [items, q])
+
+  // 🔹 Pagination
+  const totalPages = Math.ceil(filteredAndSorted.length / pageSize) || 1
+  const paged = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredAndSorted.slice(start, start + pageSize)
+  }, [filteredAndSorted, page, pageSize])
+
+  // 🔹 Open modal for Add/Edit
   const open = (item = null) => {
     setEditing(item)
     setErrors({})
@@ -33,19 +53,17 @@ export default function Buyers() {
     setShowForm(true)
   }
 
+  // 🔹 Validation
   const validate = () => {
     const errs = {}
-
     if (!form.name.trim()) errs.name = 'Name is required'
 
-    // Email validation: must contain lowercase, @, and gmail.com
     if (!form.email) {
       errs.email = 'Email is required'
     } else if (!/^[a-z0-9._%+-]+@gmail\.com$/.test(form.email)) {
       errs.email = 'Email must be valid and end with @gmail.com (lowercase only)'
     }
 
-    // Phone validation: 10-digit number only
     if (!form.phone) {
       errs.phone = 'Phone number is required'
     } else if (!/^\d{10}$/.test(form.phone)) {
@@ -58,6 +76,7 @@ export default function Buyers() {
     return Object.keys(errs).length === 0
   }
 
+  // 🔹 Save Buyer (Create/Update)
   const save = async (e) => {
     e.preventDefault()
     if (!validate()) return
@@ -69,6 +88,7 @@ export default function Buyers() {
     fetchAll()
   }
 
+  // 🔹 Delete Buyer
   const remove = async (id) => {
     const ok = await confirmModal({ title: 'Delete buyer?', description: 'This action cannot be undone.' })
     if (!ok) return
@@ -76,21 +96,32 @@ export default function Buyers() {
     fetchAll()
   }
 
+  // 🔹 Render
   return (
     <div className="space-y-4">
+      {/* 🔍 Search + Add */}
       <div className="flex justify-between items-center">
         <input
           className="input max-w-xs"
-          placeholder="Search"
+          placeholder="Search buyers..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="flex items-center gap-3">
           <label className="text-sm text-gray-600">Rows</label>
-          <select className="input w-20" value={pageSize} onChange={e=>{ setPageSize(Number(e.target.value)); setPage(1); }}>
-            {[3,5,10,20].map(n => (<option key={n} value={n}>{n}</option>))}
+          <select
+            className="input w-20"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value))
+              setPage(1)
+            }}
+          >
+            {[3, 5, 10, 20].map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
           </select>
-          {canCreate(user.role) && (
+          {canCreate('buyer') && (
             <button className="btn-primary" onClick={() => open()}>
               Add Buyer
             </button>
@@ -98,8 +129,9 @@ export default function Buyers() {
         </div>
       </div>
 
+      {/* 📋 Buyers Table */}
       <div className="card p-4">
-        <table className="table">
+        <table className="table w-full">
           <thead>
             <tr>
               <th>Name</th>
@@ -110,46 +142,89 @@ export default function Buyers() {
             </tr>
           </thead>
           <tbody>
-            {items.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map((s) => (
-              <tr key={s.id} className="border-t">
-                <td className="font-medium">{s.name}</td>
-                <td>{s.email}</td>
-                <td>{s.phone}</td>
-                <td className="text-sm text-gray-600">{s.address}</td>
+            {paged.map((b) => (
+              <tr key={b.id} className="border-t">
+                <td className="font-medium">{b.name}</td>
+                <td>{b.email}</td>
+                <td>{b.phone}</td>
+                <td className="text-sm text-gray-600">{b.address}</td>
                 <td className="text-right space-x-2">
-                  {canUpdate(user.role) && (
-                    <button className="btn-secondary" onClick={() => open(s)}>
+                  {canUpdate('buyer') && (
+                    <button className="btn-secondary" onClick={() => open(b)}>
                       Edit
                     </button>
                   )}
-                  {canDelete(user.role) && (
-                    <button className="btn-danger" onClick={() => remove(s.id)}>
+                  {canDelete('buyer') && (
+                    <button className="btn-danger" onClick={() => remove(b.id)}>
                       Delete
                     </button>
                   )}
                 </td>
               </tr>
             ))}
+
+            {filteredAndSorted.length === 0 && (
+              <tr>
+                <td colSpan="5" className="text-center text-gray-500 py-6">
+                  No buyers found.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-        {items.length > 0 && (
+
+        {/* ✅ Inline Pagination (Icon-Only) */}
+        {filteredAndSorted.length > 0 && (
           <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Page {page} of {Math.max(1, Math.ceil(items.length / pageSize))}</span>
-              <button className="btn-secondary" disabled={page===1} onClick={()=>setPage(1)}>{'<<'}</button>
-              <button className="btn-secondary" disabled={page===1} onClick={()=>setPage(p=>Math.max(1,p-1))}>{'<'}</button>
-              <button className="btn-secondary" disabled={page>=Math.ceil(items.length/pageSize)} onClick={()=>setPage(p=>Math.min(Math.ceil(items.length/pageSize)||1,p+1))}>{'>'}</button>
-              <button className="btn-secondary" disabled={page>=Math.ceil(items.length/pageSize)} onClick={()=>setPage(Math.max(1,Math.ceil(items.length/pageSize)))}>{'>>'}</button>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+              >
+                <ChevronsLeft size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page === 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              >
+                <ChevronRight size={18} className="text-gray-700" />
+              </button>
+
+              <button
+                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+              >
+                <ChevronsRight size={18} className="text-gray-700" />
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Form Modal */}
+      {/* 🧾 Buyer Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
           <div className="card w-full max-w-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">{editing ? 'Edit Buyer' : 'Add Buyer'}</h3>
+            <h3 className="text-lg font-semibold mb-4">
+              {editing ? 'Edit Buyer' : 'Add Buyer'}
+            </h3>
+
             <form onSubmit={save} className="space-y-3">
               {/* Name */}
               <div>
@@ -197,11 +272,7 @@ export default function Buyers() {
 
               {/* Buttons */}
               <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowForm(false)}
-                >
+                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
                   Cancel
                 </button>
                 <button className="btn-primary">Save</button>

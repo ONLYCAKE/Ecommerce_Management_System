@@ -30,14 +30,26 @@ router.put('/:id', roleCheck(PERMISSIONS.SUPPLIER_UPDATE), async (req, res) => {
 router.delete('/:id', roleCheck(PERMISSIONS.SUPPLIER_DELETE), async (req, res) => {
   if (req.user.role !== 'SuperAdmin') return res.status(403).json({ message: 'Forbidden' });
   const id = Number(req.params.id);
-  // Do not allow delete if invoices reference this supplier
-  const invoiceCount = await prisma.invoice.count({ where: { supplierId: id } });
-  if (invoiceCount > 0) {
-    return res.status(400).json({ message: 'Cannot delete supplier while invoices exist. Reassign or delete related invoices first.' });
+  try {
+    // Enforce: only delete if NO linked products or invoices
+    const [invoiceCount, productCount] = await Promise.all([
+      prisma.invoice.count({ where: { supplierId: id } }),
+      prisma.product.count({ where: { supplierId: id } })
+    ]);
+    if (invoiceCount > 0 || productCount > 0) {
+      return res.status(409).json({
+        message: 'Cannot delete supplier while related products or invoices exist. Remove/reassign them first.'
+      });
+    }
+
+    await prisma.supplier.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err?.code === 'P2003') {
+      return res.status(409).json({ message: 'Delete blocked due to existing references. Please remove related records first.' });
+    }
+    return res.status(500).json({ message: 'Failed to delete supplier' });
   }
-  await prisma.product.updateMany({ where: { supplierId: id }, data: { supplierId: null } });
-  await prisma.supplier.delete({ where: { id } });
-  res.json({ ok: true });
 });
 
 export default router;

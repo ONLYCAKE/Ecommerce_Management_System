@@ -6,19 +6,20 @@ import { PERMISSIONS } from '../constants/permissions.js';
 
 const router = Router();
 
-// 🔐 Apply authentication middleware to all user routes
+// 🔐 Require auth for all user routes
 router.use(authenticate);
 
 /**
  * GET /users
- * Fetch paginated list of users with search and archived filters
+ * Fetch users (active only, unless ?archived=true)
  */
 router.get('/', roleCheck(PERMISSIONS.USER_READ), async (req, res) => {
   try {
-    const { q = '', page = 1, pageSize = 10 } = req.query;
+    const { q = '', page = 1, pageSize = 10, archived = 'false' } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
 
     const where = {
+      isArchived: archived === 'true' ? true : false,
       ...(q && q.trim()
         ? {
             OR: [
@@ -50,7 +51,6 @@ router.get('/', roleCheck(PERMISSIONS.USER_READ), async (req, res) => {
 
 /**
  * GET /users/:id
- * Fetch a single user by ID
  */
 router.get('/:id', roleCheck(PERMISSIONS.USER_READ), async (req, res) => {
   try {
@@ -59,7 +59,6 @@ router.get('/:id', roleCheck(PERMISSIONS.USER_READ), async (req, res) => {
       where: { id },
       include: { role: true },
     });
-
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (err) {
@@ -74,22 +73,17 @@ router.get('/:id', roleCheck(PERMISSIONS.USER_READ), async (req, res) => {
  */
 router.post('/', roleCheck(PERMISSIONS.USER_CREATE), async (req, res) => {
   try {
-    const { email, password, roleId, firstName, lastName, phone } = req.body;
+    const { email, password, roleId, firstName, lastName } = req.body;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing)
       return res.status(400).json({ message: 'Email already in use' });
 
-    const hash = await bcrypt.hash(
-      password || Math.random().toString(36).slice(2),
-      10
-    );
+    const hash = await bcrypt.hash(password || Math.random().toString(36).slice(2), 10);
 
     const role = await prisma.role.findUnique({ where: { id: roleId } });
     if (role?.name === 'SuperAdmin' && req.user.role !== 'SuperAdmin') {
-      return res
-        .status(403)
-        .json({ message: 'You cannot assign SuperAdmin role' });
+      return res.status(403).json({ message: 'You cannot assign SuperAdmin role' });
     }
 
     const user = await prisma.user.create({
@@ -99,7 +93,6 @@ router.post('/', roleCheck(PERMISSIONS.USER_CREATE), async (req, res) => {
         roleId,
         firstName,
         lastName,
-        phone,
         mustChangePassword: true,
       },
     });
@@ -122,13 +115,8 @@ router.put('/:id', roleCheck(PERMISSIONS.USER_UPDATE), async (req, res) => {
 
     if (roleId) {
       const newRole = await prisma.role.findUnique({ where: { id: roleId } });
-      if (
-        newRole?.name === 'SuperAdmin' &&
-        req.user.role !== 'SuperAdmin'
-      ) {
-        return res
-          .status(403)
-          .json({ message: 'You cannot assign SuperAdmin role' });
+      if (newRole?.name === 'SuperAdmin' && req.user.role !== 'SuperAdmin') {
+        return res.status(403).json({ message: 'You cannot assign SuperAdmin role' });
       }
     }
 
@@ -146,12 +134,16 @@ router.put('/:id', roleCheck(PERMISSIONS.USER_UPDATE), async (req, res) => {
 
 /**
  * DELETE /users/:id
- * Soft delete (archive) a user
+ * Soft-delete (archive) a user
  */
 router.delete('/:id', roleCheck(PERMISSIONS.USER_DELETE), async (req, res) => {
   try {
-    // No-op archive to avoid data loss and schema mismatch
-    res.json({ ok: true });
+    const id = Number(req.params.id);
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isArchived: true },
+    });
+    res.json({ message: 'User archived successfully', user });
   } catch (err) {
     console.error('❌ Error archiving user:', err);
     res.status(500).json({ message: 'Server error archiving user' });
@@ -164,8 +156,12 @@ router.delete('/:id', roleCheck(PERMISSIONS.USER_DELETE), async (req, res) => {
  */
 router.patch('/:id/restore', roleCheck(PERMISSIONS.USER_UPDATE), async (req, res) => {
   try {
-    // No-op restore to avoid schema mismatch
-    res.json({ ok: true });
+    const id = Number(req.params.id);
+    const user = await prisma.user.update({
+      where: { id },
+      data: { isArchived: false },
+    });
+    res.json({ message: 'User restored successfully', user });
   } catch (err) {
     console.error('❌ Error restoring user:', err);
     res.status(500).json({ message: 'Server error restoring user' });

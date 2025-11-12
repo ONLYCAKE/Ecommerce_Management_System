@@ -66,23 +66,20 @@ router.delete('/:id', roleCheck(PERMISSIONS.BUYER_DELETE), async (req, res) => {
 
     const id = Number(req.params.id);
 
-    // Prevent deletion if linked invoices exist
+    // Enforce: only delete if NO linked invoices
     const invoiceCount = await prisma.invoice.count({ where: { buyerId: id } });
     if (invoiceCount > 0) {
-      return res.status(400).json({
-        message:
-          'Cannot delete buyer while invoices exist. Reassign or delete related invoices first.',
+      return res.status(409).json({
+        message: 'Cannot delete buyer while related invoices exist. Remove/reassign them first.'
       });
     }
 
-    // ✅ Delete all invoices linked to this buyer (replaces prisma.order)
-    await prisma.invoice.deleteMany({ where: { buyerId: id } });
-
-    // ✅ Now delete buyer
     await prisma.buyer.delete({ where: { id } });
-
     res.json({ ok: true });
   } catch (err) {
+    if (err?.code === 'P2003') {
+      return res.status(409).json({ message: 'Delete blocked due to existing references. Please remove related records first.' });
+    }
     console.error('❌ Error deleting buyer:', err);
     res.status(500).json({ error: 'Failed to delete buyer' });
   }

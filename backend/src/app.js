@@ -9,11 +9,11 @@ import permissionRoutes from './routes/permissions.js';
 import supplierRoutes from './routes/suppliers.js';
 import buyerRoutes from './routes/buyers.js';
 import productRoutes from './routes/products.js';
-import invoiceRoutes from './routes/invoice.js';
 import ordersRoutes from './routes/orders.js';
 import invoicesRoutes from './routes/invoices.js';
 import statsRoutes from './routes/stats.js';
 import { prisma } from './prisma.js';
+import { ADMIN_PERMISSIONS, EMPLOYEE_PERMISSIONS } from './constants/permissions.js';
 
 dotenv.config();
 
@@ -34,27 +34,17 @@ app.use('/uploads', express.static('uploads'));
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-app.use('/auth', authRoutes);
-app.use('/users', userRoutes);
-app.use('/roles', roleRoutes);
-app.use('/permissions', permissionRoutes);
-app.use('/suppliers', supplierRoutes);
-app.use('/buyers', buyerRoutes);
-app.use('/products', productRoutes);
-
-// New API namespace for PMS endpoints
-app.use('/api/invoice', invoiceRoutes);
-app.use('/api/orders', ordersRoutes);
-app.use('/api/invoices', invoicesRoutes);
+// Mount all routes strictly under /api namespace
 app.use('/api/auth', authRoutes);
-app.use('/api/stats', statsRoutes);
-// mirror core routes under /api for frontend baseURL compatibility
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/buyers', buyerRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/invoices', invoicesRoutes);
+app.use('/api/stats', statsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -93,16 +83,15 @@ export default app;
       'order.read','order.create'
     ];
 
-    // Non-destructive: only use existing permissions; do NOT create to avoid
-    // violating unknown DB constraints in production data.
+    // Upsert all permissions and keep names in sync
     const perms = [];
     for (const key of baseKeys) {
-      const existing = await prisma.permission.findUnique({ where: { key } });
-      if (existing) {
-        // keep name in sync if possible
-        try { await prisma.permission.update({ where: { key }, data: { name: key } }); } catch {}
-        perms.push(existing);
-      }
+      const perm = await prisma.permission.upsert({
+        where: { key },
+        update: { name: key },
+        create: { key, name: key }
+      });
+      perms.push(perm);
     }
 
     // Ensure SuperAdmin has all permissions enabled
@@ -112,6 +101,30 @@ export default app;
         update: { enabled: true },
         create: { roleId: sa.id, permissionId: p.id, enabled: true }
       });
+    }
+
+    // Assign baseline permissions for Admin
+    for (const key of ADMIN_PERMISSIONS) {
+      const p = await prisma.permission.findUnique({ where: { key } });
+      if (p) {
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId: admin.id, permissionId: p.id } },
+          update: { enabled: true },
+          create: { roleId: admin.id, permissionId: p.id, enabled: true }
+        });
+      }
+    }
+
+    // Assign baseline permissions for Employee
+    for (const key of EMPLOYEE_PERMISSIONS) {
+      const p = await prisma.permission.findUnique({ where: { key } });
+      if (p) {
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId: emp.id, permissionId: p.id } },
+          update: { enabled: true },
+          create: { roleId: emp.id, permissionId: p.id, enabled: true }
+        });
+      }
     }
 
     // Bootstrap demo users only if they don't exist

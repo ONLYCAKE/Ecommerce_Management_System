@@ -43,6 +43,7 @@ model User {
   firstName          String?
   lastName           String?
   mustChangePassword Boolean  @default(false)
+  isArchived         Boolean  @default(false)
   roleId             Int
   role               Role     @relation(fields: [roleId], references: [id])
   createdAt          DateTime @default(now())
@@ -89,6 +90,8 @@ model Invoice {
   supplierId    Int
   paymentMethod String
   total         Float
+  serviceCharge Float    @default(0)
+  balance       Float    @default(0)
   status        String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -105,7 +108,10 @@ model InvoiceItem {
   qty         Int
   price       Float
   gst         Float
+  discountPct Float    @default(0)
   amount      Float
+  unit        String?
+  hsn         String?
   productId   Int?
   invoiceId   Int
   product     Product? @relation(fields: [productId], references: [id])
