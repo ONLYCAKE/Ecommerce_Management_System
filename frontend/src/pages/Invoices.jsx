@@ -100,11 +100,30 @@ export default function Invoices() {
     return itemsTotal + (Number(form.serviceCharge) || 0)
   }, [form])
 
+  // Basic validations before save
+  const validateInvoice = () => {
+    const errs = []
+    if (!form.buyerId) errs.push('Buyer is required')
+    const validLines = (form.lines || []).filter(l => (l.productId || l.title) && Number(l.qty) > 0)
+    if (validLines.length === 0) errs.push('At least one valid line item is required')
+    if (!editingInvNo && !form.invoiceNo) errs.push('Invoice No is required')
+    return { ok: errs.length === 0, errs, validLines }
+  }
+
   const save = async (e) => {
     e.preventDefault()
-    const itemsPayload = form.lines
-      .filter(l => (l.productId || l.title) && Number(l.qty) > 0)
-      .map(l => ({
+    console.debug('[DEBUG] Save button clicked')
+    try {
+      const { ok, errs, validLines } = validateInvoice()
+      if (!ok) {
+        const msg = `Validation failed: ${errs.join(', ')}`
+        console.warn('[DEBUG] Invoice validation failed', errs)
+        setToast(`⚠️ ${msg}`)
+        setTimeout(() => setToast(null), 2200)
+        return
+      }
+
+      const itemsPayload = validLines.map(l => ({
         productId: l.productId ? Number(l.productId) : undefined,
         title: l.title,
         description: l.description,
@@ -118,29 +137,36 @@ export default function Invoices() {
           (1 + (Number(l.gst) || 0) / 100),
       }))
 
-    if (editingInvNo) {
-      await api.put(`/invoices/${editingInvNo}`, {
+      const payloadBase = {
         buyerId: Number(form.buyerId),
         paymentMethod: form.paymentMethod,
-        items: itemsPayload,
         serviceCharge: Number(form.serviceCharge) || 0,
-      })
-    } else {
-      await api.post('/invoices', {
-        invoiceNo: form.invoiceNo,
-        buyerId: Number(form.buyerId),
-        paymentMethod: form.paymentMethod,
-        status: 'Processing',
-        items: itemsPayload,
-        serviceCharge: Number(form.serviceCharge) || 0,
-      })
-    }
+      }
 
-    handleClose()
-    setEditingInvNo('')
-    setToast('✅ Invoice successfully generated!')
-    setTimeout(() => setToast(null), 2500)
-    load()
+      if (editingInvNo) {
+        const payload = { ...payloadBase, items: itemsPayload }
+        console.debug('[DEBUG] Sending PUT /invoices/:invoiceNo payload', payload)
+        const res = await api.put(`/invoices/${editingInvNo}`, payload)
+        console.debug('[DEBUG] Save success (update)', res?.data)
+      } else {
+        const payload = { ...payloadBase, invoiceNo: form.invoiceNo, status: 'Processing', items: itemsPayload }
+        console.debug('[DEBUG] Sending POST /invoices payload', payload)
+        const res = await api.post('/invoices', payload)
+        console.debug('[DEBUG] Save success (create)', res?.data)
+      }
+
+      handleClose()
+      setEditingInvNo('')
+      setToast('✅ Invoice successfully saved!')
+      setTimeout(() => setToast(null), 2500)
+      load()
+    } catch (err) {
+      const status = err?.response?.status
+      const message = err?.response?.data?.message || err?.message || 'Unknown error'
+      console.error('[ERROR] Save failed:', { status, message, err })
+      setToast(`⚠️ Save failed: ${message}`)
+      setTimeout(() => setToast(null), 3000)
+    }
   }
 
   const markCompleted = async (invNo) => {

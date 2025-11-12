@@ -5,19 +5,18 @@ import avatarDefault from '../assets/default-avatar.svg'
 export default function UserProfile() {
   const { user } = useAuth()
   const [copied, setCopied] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [formData, setFormData] = useState({
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    email: user?.email || '',
+  })
 
   const fullName = useMemo(() => {
     const fn = user?.firstName || ''
     const ln = user?.lastName || ''
     const n = `${fn} ${ln}`.trim()
     return n || 'User'
-  }, [user])
-
-  const roleBadge = useMemo(() => {
-    const role = user?.role
-    if (role === 'SuperAdmin') return 'bg-purple-600/20 text-purple-300 ring-1 ring-purple-500/30'
-    if (role === 'Admin') return 'bg-blue-600/20 text-blue-300 ring-1 ring-blue-500/30'
-    return 'bg-green-600/20 text-green-300 ring-1 ring-green-500/30'
   }, [user])
 
   const joinedOn = useMemo(() => {
@@ -29,9 +28,14 @@ export default function UserProfile() {
     }
   }, [user])
 
-  const status = 'Active'
+  const roleBadgeColor =
+    user?.role === 'SuperAdmin'
+      ? 'bg-purple-100 text-purple-700'
+      : user?.role === 'Admin'
+      ? 'bg-blue-100 text-blue-700'
+      : 'bg-green-100 text-green-700'
 
-  const copyEmail = async () => {
+  const handleCopy = async () => {
     if (!user?.email) return
     try {
       await navigator.clipboard.writeText(user.email)
@@ -41,86 +45,148 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] -m-6 p-8 bg-gradient-to-br from-gray-900 via-slate-800 to-blue-900">
-      <div className="max-w-5xl mx-auto">
-        {/* Profile Header Card */}
-        <div className="backdrop-blur-xl bg-white/10 border border-white/10 rounded-3xl shadow-2xl p-8 md:p-10 space-y-8">
+    <div className="p-6 md:p-10 bg-gray-50 min-h-[calc(100vh-64px)]">
+      <div className="max-w-5xl mx-auto space-y-8">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-800">Profile</h1>
+            <p className="text-gray-500">View and edit your account details</p>
+          </div>
+          <button
+            onClick={() => setIsEditing(true)}
+            className="mt-4 md:mt-0 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm"
+          >
+            Edit Profile
+          </button>
+        </div>
+
+        {/* Profile Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
-            
-            {/* Profile Photo */}
-            <div className="relative">
+            {/* Avatar */}
+            <div>
               <img
                 src={user?.photo || avatarDefault}
                 alt="Profile"
-                className="h-32 w-32 md:h-36 md:w-36 rounded-full object-cover shadow-2xl ring-4 ring-white/20"
+                className="h-32 w-32 rounded-full border border-gray-300 object-cover shadow-sm"
               />
             </div>
 
-            {/* User Info */}
-            <div className="flex-1 text-center md:text-left">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div>
-                  <h1 className="text-3xl font-bold text-white tracking-tight">{fullName}</h1>
-                  <p className="text-gray-300 mt-1">{user?.email || ''}</p>
-                  <div className="mt-3 inline-flex items-center gap-2">
-                    <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${roleBadge}`}>
-                      {user?.role || '—'}
-                    </span>
+            {/* Info Section */}
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-800">{fullName}</h2>
+              <p className="text-gray-600 mt-1">{user?.email}</p>
+              <span
+                className={`inline-block mt-3 px-3 py-1 rounded-full text-sm font-medium ${roleBadgeColor}`}
+              >
+                {user?.role || 'Employee'}
+              </span>
+
+              {/* Grid Details */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-8">
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="text-sm text-gray-500">First Name</div>
+                  <div className="font-medium text-gray-800 mt-1">
+                    {user?.firstName || '—'}
                   </div>
                 </div>
-
-                {/* Edit Button */}
-                <button
-                  type="button"
-                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-md hover:shadow-blue-600/30 transition-all duration-200"
-                >
-                  Edit Profile
-                </button>
-              </div>
-
-              {/* Details Row */}
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="backdrop-blur bg-white/10 border border-white/10 rounded-xl p-4 text-left">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-400">First Name</div>
-                  <div className="text-sm font-semibold text-white mt-1">{user?.firstName || '—'}</div>
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="text-sm text-gray-500">Last Name</div>
+                  <div className="font-medium text-gray-800 mt-1">
+                    {user?.lastName || '—'}
+                  </div>
                 </div>
-                <div className="backdrop-blur bg-white/10 border border-white/10 rounded-xl p-4 text-left">
-                  <div className="text-[11px] uppercase tracking-wide text-gray-400">Last Name</div>
-                  <div className="text-sm font-semibold text-white mt-1">{user?.lastName || '—'}</div>
-                </div>
-                <div className="backdrop-blur bg-white/10 border border-white/10 rounded-xl p-4 text-left">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-400">Email</div>
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    Email
                     <button
-                      type="button"
-                      className="text-[11px] px-2 py-0.5 rounded-md bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 transition-all duration-150"
-                      onClick={copyEmail}
+                      onClick={handleCopy}
+                      className="text-blue-600 hover:text-blue-800 text-xs font-medium"
                     >
                       {copied ? 'Copied' : 'Copy'}
                     </button>
                   </div>
-                  <div className="text-sm font-semibold text-white mt-1 break-all">{user?.email || '—'}</div>
+                  <div className="font-medium text-gray-800 mt-1 break-all">
+                    {user?.email || '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Info */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="text-sm text-gray-500">Joined On</div>
+                  <div className="font-medium text-gray-800 mt-1">{joinedOn}</div>
+                </div>
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="text-sm text-gray-500">Status</div>
+                  <div className="font-medium text-green-600 mt-1">Active</div>
+                </div>
+                <div className="p-4 rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="text-sm text-gray-500">Role</div>
+                  <div className="font-medium text-gray-800 mt-1">
+                    {user?.role || 'Employee'}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Meta Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-5 backdrop-blur">
-              <div className="text-sm text-gray-300">Joined On</div>
-              <div className="text-lg font-semibold text-white mt-1">{joinedOn}</div>
-            </div>
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-5 backdrop-blur">
-              <div className="text-sm text-gray-300">Status</div>
-              <div className="text-lg font-semibold text-green-400 mt-1">{status}</div>
-            </div>
-            <div className="bg-white/10 border border-white/10 rounded-2xl p-5 backdrop-blur">
-              <div className="text-sm text-gray-300">Role</div>
-              <div className="text-lg font-semibold text-white mt-1">{user?.role || '—'}</div>
+        {/* Edit Modal */}
+        {isEditing && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-[90%] md:w-[420px] shadow-lg border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                Edit Profile
+              </h3>
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={formData.firstName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, firstName: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={formData.lastName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, lastName: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
