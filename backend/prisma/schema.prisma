@@ -1,19 +1,18 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // change to "mysql" or "sqlite" if you’re using those
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Role {
   id              Int              @id @default(autoincrement())
   name            String           @unique
-  users           User[]
-  rolePermissions RolePermission[]
   createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+  users           User[]
 }
 
 model Permission {
@@ -24,14 +23,13 @@ model Permission {
 }
 
 model RolePermission {
-  id           Int      @id @default(autoincrement())
+  id           Int        @id @default(autoincrement())
   roleId       Int
   permissionId Int
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  enabled      Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
 }
@@ -40,78 +38,91 @@ model User {
   id                 Int      @id @default(autoincrement())
   email              String   @unique
   password           String
+  roleId             Int
   firstName          String?
   lastName           String?
   mustChangePassword Boolean  @default(false)
-  isArchived         Boolean  @default(false)
-  roleId             Int
-  role               Role     @relation(fields: [roleId], references: [id])
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  isArchived         Boolean  @default(false)
+  role               Role     @relation(fields: [roleId], references: [id])
 }
 
 model Supplier {
-  id       Int       @id @default(autoincrement())
-  name     String
-  email    String
-  phone    String
-  address  String
-  products Product[]
-  invoices Invoice[]
+  id           Int       @id @default(autoincrement())
+  name         String
+  email        String
+  phone        String
+  addressLine1 String    @default("")
+  addressLine2 String?
+  area         String    @default("")
+  city         String    @default("")
+  state        String    @default("")
+  country      String    @default("")
+  postalCode   String    @default("")
+  invoices     Invoice[]
+  products     Product[]
 }
 
 model Buyer {
-  id       Int       @id @default(autoincrement())
-  name     String
-  email    String
-  phone    String
-  address  String
-  invoices Invoice[]
+  id           Int       @id @default(autoincrement())
+  name         String
+  email        String
+  phone        String
+  gstin        String?   @unique
+  addressLine1 String    @default("")
+  addressLine2 String?
+  area         String    @default("")
+  city         String    @default("")
+  state        String    @default("")
+  country      String    @default("")
+  postalCode   String    @default("")
+  invoices     Invoice[]
 }
 
 model Product {
   id           Int           @id @default(autoincrement())
   sku          String        @unique
-  title        String
   description  String?
-  category     String?
   price        Float
   stock        Int
   supplierId   Int?
-  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
-  invoiceItems InvoiceItem[]
+  category     String?
+  title        String
   createdAt    DateTime      @default(now())
+  invoiceItems InvoiceItem[]
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
 }
 
 model Invoice {
-  id            Int      @id @default(autoincrement())
-  invoiceNo     String   @unique
+  id            Int           @id @default(autoincrement())
+  invoiceNo     String        @unique
   buyerId       Int
   supplierId    Int
   paymentMethod String
   total         Float
-  serviceCharge Float    @default(0)
-  balance       Float    @default(0)
   status        String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  buyer    Buyer         @relation(fields: [buyerId], references: [id])
-  supplier Supplier      @relation(fields: [supplierId], references: [id])
-  items    InvoiceItem[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  balance       Float         @default(0)
+  serviceCharge Float         @default(0)
+  signature     String?       @db.Text
+  buyer         Buyer         @relation(fields: [buyerId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  items         InvoiceItem[]
 }
 
 model InvoiceItem {
   id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  productId   Int?
   title       String
   description String?
   qty         Int
   price       Float
   gst         Float
-  discountPct Float
   amount      Float
+  discountPct Float
   invoice     Invoice  @relation(fields: [invoiceId], references: [id])
-  invoiceId   Int
   product     Product? @relation(fields: [productId], references: [id])
-  productId   Int?
 }
