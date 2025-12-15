@@ -13,7 +13,7 @@ export default function Orders() {
   const [pageSize, setPageSize] = useState(10)
   const navigate = useNavigate()
 
-  const load = async () => { const { data } = await api.get('/orders'); setItems(data) }
+  const load = async () => { const { data } = await api.get('/invoices'); setItems(data) }
   useEffect(() => { load() }, [])
 
   useEffect(() => {

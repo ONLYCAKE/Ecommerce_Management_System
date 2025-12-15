@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import app from './app';
 import http from 'http';
 import { Server } from 'socket.io';
+import { initializeEventService } from './services/eventService';
 
 dotenv.config();
 // Compatibility: allow DB_URL to satisfy Prisma's DATABASE_URL
@@ -13,6 +14,9 @@ const PORT = Number(process.env.PORT || process.env.BACKEND_PORT || 5000);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 (app as any).set('io', io);
+
+// Initialize event service
+initializeEventService(io);
 
 io.on('connection', (socket) => {
   // simple heartbeat

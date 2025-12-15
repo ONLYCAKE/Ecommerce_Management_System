@@ -7,21 +7,23 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', roleCheck(PERMISSIONS.SUPPLIER_READ), async (req, res) => {
-  const { q = '', sortBy = 'id', dir = 'desc' } = req.query as any;
+  const { q = '', sortBy = 'id', dir = 'desc', archived = 'false' } = req.query as any;
 
   const allowedSortFields = ['name', 'email', 'phone', 'id'];
   const validSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'id';
   const validDir = dir === 'asc' ? 'asc' : 'desc';
+  const isArchived = archived === 'true';
 
-  const where = q ? {
-    OR: [
+  const where: any = { isArchived };
+  if (q) {
+    where.OR = [
       { name: { contains: q as string, mode: 'insensitive' } },
       { email: { contains: q as string, mode: 'insensitive' } }
-    ]
-  } : {};
+    ];
+  }
 
   const items = await prisma.supplier.findMany({
-    where: where as any,
+    where,
     orderBy: { [validSortBy]: validDir }
   });
   res.json(items);
@@ -75,9 +77,39 @@ router.put('/:id', roleCheck(PERMISSIONS.SUPPLIER_UPDATE), async (req, res) => {
 });
 
 router.delete('/:id', roleCheck(PERMISSIONS.SUPPLIER_DELETE), async (req, res) => {
-  if ((req as any).user.role !== 'SuperAdmin') return res.status(403).json({ message: 'Forbidden' });
   const id = Number(req.params.id);
   try {
+    // Soft delete - set isArchived to true
+    await prisma.supplier.update({
+      where: { id },
+      data: { isArchived: true }
+    });
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('❌ Error archiving supplier:', err);
+    return res.status(500).json({ message: 'Failed to archive supplier' });
+  }
+});
+
+// Restore archived supplier
+router.patch('/:id/restore', roleCheck(PERMISSIONS.SUPPLIER_UPDATE), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const supplier = await prisma.supplier.update({
+      where: { id },
+      data: { isArchived: false }
+    });
+    res.json(supplier);
+  } catch (err) {
+    console.error('❌ Error restoring supplier:', err);
+    res.status(500).json({ error: 'Failed to restore supplier' });
+  }
+});
+
+// Permanent delete supplier
+router.delete('/:id/permanent', roleCheck(PERMISSIONS.SUPPLIER_DELETE), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
     const [invoiceCount, productCount] = await Promise.all([
       prisma.invoice.count({ where: { supplierId: id } }),
       prisma.product.count({ where: { supplierId: id } })
@@ -85,14 +117,14 @@ router.delete('/:id', roleCheck(PERMISSIONS.SUPPLIER_DELETE), async (req, res) =
     if (invoiceCount > 0 || productCount > 0) {
       return res.status(409).json({ message: 'Cannot delete supplier while related products or invoices exist. Remove/reassign them first.' });
     }
-
     await prisma.supplier.delete({ where: { id } });
     res.json({ ok: true });
   } catch (err: any) {
     if (err?.code === 'P2003') {
       return res.status(409).json({ message: 'Delete blocked due to existing references. Please remove related records first.' });
     }
-    return res.status(500).json({ message: 'Failed to delete supplier' });
+    console.error('❌ Error permanently deleting supplier:', err);
+    res.status(500).json({ message: 'Failed to permanently delete supplier' });
   }
 });
 

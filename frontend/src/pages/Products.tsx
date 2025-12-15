@@ -6,8 +6,8 @@ import { useConfirm } from '../context/ConfirmContext'
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
 
 interface Supplier { id: number; name: string }
-interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier }
-interface ProductForm { sku: string; title: string; category: string; description: string; price: number | string; stock: number | string; supplierId: number | string }
+interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string }
+interface ProductForm { sku: string; title: string; category: string; description: string; price: number | string; stock: number | string; supplierId: number | string; hsnCode: string }
 
 export default function Products() {
   const [items, setItems] = useState<Product[]>([])
@@ -19,7 +19,8 @@ export default function Products() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
-  const [form, setForm] = useState<ProductForm>({ sku: '', title: '', category: '', description: '', price: 0, stock: 0, supplierId: '' })
+  const [archived, setArchived] = useState(false)
+  const [form, setForm] = useState<ProductForm>({ sku: '', title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { user } = useAuth()
   const perms = user?.permissions || []
@@ -31,10 +32,10 @@ export default function Products() {
   const confirmModal = useConfirm()
 
   const fetchAll = async () => {
-    const { data } = await api.get('/products')
+    const { data } = await api.get('/products', { params: { archived } })
     setItems(data)
   }
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchAll() }, [archived])
 
   useEffect(() => { (async () => { const s = await api.get('/suppliers'); setSuppliers(s.data) })() }, [])
 
@@ -81,7 +82,7 @@ export default function Products() {
     setErrors({})
     if (item) {
       // Editing existing product
-      setForm({ sku: item.sku || '', title: item.title, category: item.category || '', description: item.description || '', price: item.price, stock: item.stock, supplierId: item.supplierId || '' })
+      setForm({ sku: item.sku || '', title: item.title, category: item.category || '', description: item.description || '', price: item.price, stock: item.stock, supplierId: item.supplierId || '', hsnCode: item.hsnCode || '' })
     } else {
       // Adding new product - auto-generate SKU
       const generateNextSKU = () => {
@@ -101,7 +102,7 @@ export default function Products() {
         return `SKU-${maxSKU + 1}`
       }
 
-      setForm({ sku: generateNextSKU(), title: '', category: '', description: '', price: 0, stock: 0, supplierId: '' })
+      setForm({ sku: generateNextSKU(), title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '' })
     }
     setShowForm(true)
   }
@@ -116,10 +117,24 @@ export default function Products() {
     fetchAll()
   }
 
-  const remove = async (id: number) => {
-    const ok = await confirmModal({ title: 'Delete product?', description: 'This action cannot be undone.' })
+  const archiveProduct = async (id: number) => {
+    const ok = await confirmModal({ title: 'Archive product?', description: 'This will archive the product. You can restore it later from the archived view.' })
     if (!ok) return
     await api.delete(`/products/${id}`)
+    fetchAll()
+  }
+
+  const deleteProduct = async (id: number) => {
+    const ok = await confirmModal({ title: 'Permanently delete product?', description: 'This action cannot be undone. The product will be permanently removed from the database.' })
+    if (!ok) return
+    await api.delete(`/products/${id}/permanent`)
+    fetchAll()
+  }
+
+  const restoreProduct = async (id: number) => {
+    const ok = await confirmModal({ title: 'Restore product?', description: 'This will unarchive the product and make it active again.' })
+    if (!ok) return
+    await api.patch(`/products/${id}/restore`, {})
     fetchAll()
   }
 
@@ -139,6 +154,11 @@ export default function Products() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
+
+          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
+            <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer" />
+            <span className="text-sm font-medium text-gray-700">{archived ? '📦 Showing Archived' : 'Show Archived'}</span>
+          </label>
         </div>
 
         <div className="flex items-center gap-4">
@@ -173,6 +193,7 @@ export default function Products() {
             <tr className="border-b-2 border-gray-200">
               <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('sku')}>SKU {sortBy === 'sku' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
               <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('title')}>Title {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
+              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">HSN/SAC</th>
               <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
               <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
               <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('price')}>Price {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
@@ -190,6 +211,9 @@ export default function Products() {
                   <div className="text-sm font-semibold text-gray-900">{p.title}</div>
                 </td>
                 <td className="py-4">
+                  <div className="text-sm font-mono text-gray-600">{p.hsnCode || '-'}</div>
+                </td>
+                <td className="py-4">
                   <div className="text-sm text-gray-600">{p.category || '-'}</div>
                 </td>
                 <td className="py-4">
@@ -203,28 +227,24 @@ export default function Products() {
                 </td>
                 <td className="py-4 text-right">
                   <div className="flex justify-end gap-2">
-                    {canUpdate && (
-                      <button
-                        className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                        onClick={() => open(p)}
-                      >
-                        Edit
-                      </button>
+                    {!archived && canUpdate && (
+                      <button className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors" onClick={() => open(p)}>Edit</button>
                     )}
-                    {canDelete && (
-                      <button
-                        className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                        onClick={() => remove(p.id)}
-                      >
-                        Delete
-                      </button>
+                    {!archived && canDelete && (
+                      <button className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors" onClick={() => deleteProduct(p.id)}>Delete</button>
+                    )}
+                    {!archived && canDelete && (
+                      <button className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors" onClick={() => archiveProduct(p.id)}>Archive</button>
+                    )}
+                    {archived && canUpdate && (
+                      <button className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors" onClick={() => restoreProduct(p.id)}>Restore</button>
                     )}
                   </div>
                 </td>
               </tr>
             ))}
             {filteredAndSorted.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-gray-500 py-6">No products found.</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-500 py-6">No products found.</td></tr>
             )}
           </tbody>
         </table>
@@ -305,7 +325,33 @@ export default function Products() {
                 </select>
                 {errors.supplierId && (<div className="text-red-500 text-xs mt-1">{errors.supplierId}</div>)}
               </div>
-              <div className="flex justify-end gap-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  HSN/SAC Code
+                </label>
+                <input
+                  type="text"
+                  className="input w-full border-gray-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all font-mono"
+                  value={form.hsnCode}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, ''); // Only digits
+                    if (value.length <= 8) {
+                      setForm(f => ({ ...f, hsnCode: value }));
+                    }
+                  }}
+                  placeholder="Enter 6 or 8 digit code"
+                  maxLength={8}
+                />
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <span>💡</span> Recommended: 8-digit Indian HSN format (e.g., 84212100)
+                </p>
+                {form.hsnCode && form.hsnCode.length !== 6 && form.hsnCode.length !== 8 && form.hsnCode.length > 0 && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <span>⚠️</span> HSN/SAC codes are typically 6 or 8 digits
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
                 <button className="btn-primary">Save</button>
               </div>

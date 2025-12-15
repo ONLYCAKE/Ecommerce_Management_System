@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Select from 'react-select'
 import { Country, State, City, ICountry, IState, ICity } from 'country-state-city'
 
 interface CountryStateCitySelectProps {
@@ -13,6 +14,11 @@ interface CountryStateCitySelectProps {
         state?: string
         city?: string
     }
+}
+
+interface OptionType {
+    value: string
+    label: string
 }
 
 export default function CountryStateCitySelect({
@@ -44,7 +50,6 @@ export default function CountryStateCitySelect({
             if (foundCountry) {
                 setSelectedCountryCode(foundCountry.isoCode)
             } else {
-                // Country not found in dropdown, enable manual input
                 setManualInput(true)
             }
         }
@@ -56,7 +61,6 @@ export default function CountryStateCitySelect({
             const countryStates = State.getStatesOfCountry(selectedCountryCode)
             setStates(countryStates)
 
-            // Try to find state code from name
             if (state) {
                 const foundState = countryStates.find(
                     s => s.name.toLowerCase() === state.toLowerCase()
@@ -64,7 +68,6 @@ export default function CountryStateCitySelect({
                 if (foundState) {
                     setSelectedStateCode(foundState.isoCode)
                 } else if (!manualInput) {
-                    // State not found, enable manual input
                     setManualInput(true)
                 }
             }
@@ -84,38 +87,84 @@ export default function CountryStateCitySelect({
         }
     }, [selectedCountryCode, selectedStateCode])
 
-    const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const countryCode = e.target.value
-        setSelectedCountryCode(countryCode)
-        setSelectedStateCode('')
+    // Convert to React Select options
+    const countryOptions: OptionType[] = countries.map(c => ({
+        value: c.isoCode,
+        label: c.name
+    }))
 
-        const selectedCountry = countries.find(c => c.isoCode === countryCode)
-        onCountryChange(selectedCountry?.name || '')
-        onStateChange('')
-        onCityChange('')
+    const stateOptions: OptionType[] = states.map(s => ({
+        value: s.isoCode,
+        label: s.name
+    }))
+
+    const cityOptions: OptionType[] = cities.map(c => ({
+        value: c.name,
+        label: c.name
+    }))
+
+    // Get selected values for React Select
+    const selectedCountry = countryOptions.find(opt => opt.label === country) || null
+    const selectedState = stateOptions.find(opt => opt.label === state) || null
+    const selectedCity = cityOptions.find(opt => opt.value === city) || null
+
+    const handleCountryChange = (option: OptionType | null) => {
+        if (option) {
+            const selectedCountry = countries.find(c => c.isoCode === option.value)
+            setSelectedCountryCode(option.value)
+            onCountryChange(selectedCountry?.name || '')
+            onStateChange('')
+            onCityChange('')
+            setSelectedStateCode('')
+        } else {
+            setSelectedCountryCode('')
+            onCountryChange('')
+            onStateChange('')
+            onCityChange('')
+        }
     }
 
-    const handleStateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const stateCode = e.target.value
-        setSelectedStateCode(stateCode)
-
-        const selectedState = states.find(s => s.isoCode === stateCode)
-        onStateChange(selectedState?.name || '')
-        onCityChange('')
+    const handleStateChange = (option: OptionType | null) => {
+        if (option) {
+            const selectedState = states.find(s => s.isoCode === option.value)
+            setSelectedStateCode(option.value)
+            onStateChange(selectedState?.name || '')
+            onCityChange('')
+        } else {
+            setSelectedStateCode('')
+            onStateChange('')
+            onCityChange('')
+        }
     }
 
-    const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const cityName = e.target.value
-        onCityChange(cityName)
+    const handleCityChange = (option: OptionType | null) => {
+        onCityChange(option?.value || '')
     }
 
     const toggleManualInput = () => {
         setManualInput(!manualInput)
         if (!manualInput) {
-            // Switching to manual, clear selections
             setSelectedCountryCode('')
             setSelectedStateCode('')
         }
+    }
+
+    // Custom styles for React Select
+    const customStyles = {
+        control: (base: any, state: any) => ({
+            ...base,
+            borderColor: errors.country || errors.state || errors.city ? '#ef4444' : state.isFocused ? '#3b82f6' : '#d1d5db',
+            boxShadow: state.isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.2)' : 'none',
+            '&:hover': {
+                borderColor: state.isFocused ? '#3b82f6' : '#9ca3af'
+            },
+            minHeight: '42px',
+            borderRadius: '0.375rem'
+        }),
+        menu: (base: any) => ({
+            ...base,
+            zIndex: 9999
+        })
     }
 
     if (manualInput) {
@@ -189,55 +238,58 @@ export default function CountryStateCitySelect({
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">Country *</label>
-                <select
-                    className={`input mt-1 ${errors.country ? 'border-red-500' : ''}`}
-                    value={selectedCountryCode}
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                    Country <span className="text-red-500">*</span>
+                </label>
+                <Select
+                    options={countryOptions}
+                    value={selectedCountry}
                     onChange={handleCountryChange}
-                >
-                    <option value="">Select Country</option>
-                    {countries.map((c) => (
-                        <option key={c.isoCode} value={c.isoCode}>
-                            {c.name}
-                        </option>
-                    ))}
-                </select>
+                    isClearable
+                    isSearchable
+                    placeholder="Search and select country..."
+                    styles={customStyles}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                />
                 {errors.country && <p className="text-red-500 text-xs mt-1">{errors.country}</p>}
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">State *</label>
-                <select
-                    className={`input mt-1 ${errors.state ? 'border-red-500' : ''}`}
-                    value={selectedStateCode}
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                    State <span className="text-red-500">*</span>
+                </label>
+                <Select
+                    options={stateOptions}
+                    value={selectedState}
                     onChange={handleStateChange}
-                    disabled={!selectedCountryCode}
-                >
-                    <option value="">Select State</option>
-                    {states.map((s) => (
-                        <option key={s.isoCode} value={s.isoCode}>
-                            {s.name}
-                        </option>
-                    ))}
-                </select>
+                    isClearable
+                    isSearchable
+                    isDisabled={!selectedCountryCode}
+                    placeholder="Search and select state..."
+                    styles={customStyles}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                />
                 {errors.state && <p className="text-red-500 text-xs mt-1">{errors.state}</p>}
             </div>
 
             <div>
-                <label className="text-sm font-medium text-gray-700">City</label>
-                <select
-                    className={`input mt-1 ${errors.city ? 'border-red-500' : ''}`}
-                    value={city}
+                <label className="text-sm font-medium text-gray-700 block mb-1">
+                    City
+                </label>
+                <Select
+                    options={cityOptions}
+                    value={selectedCity}
                     onChange={handleCityChange}
-                    disabled={!selectedStateCode}
-                >
-                    <option value="">Select City</option>
-                    {cities.map((c) => (
-                        <option key={c.name} value={c.name}>
-                            {c.name}
-                        </option>
-                    ))}
-                </select>
+                    isClearable
+                    isSearchable
+                    isDisabled={!selectedStateCode}
+                    placeholder="Search and select city (optional)..."
+                    styles={customStyles}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                />
                 {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
             </div>
         </div>

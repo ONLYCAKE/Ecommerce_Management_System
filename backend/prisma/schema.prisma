@@ -35,17 +35,21 @@ model RolePermission {
 }
 
 model User {
-  id                 Int      @id @default(autoincrement())
-  email              String   @unique
+  id                 Int               @id @default(autoincrement())
+  email              String            @unique
   password           String
   roleId             Int
   firstName          String?
   lastName           String?
-  mustChangePassword Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  isArchived         Boolean  @default(false)
-  role               Role     @relation(fields: [roleId], references: [id])
+  mustChangePassword Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  isArchived         Boolean           @default(false)
+  role               Role              @relation(fields: [roleId], references: [id])
+  cancelledInvoices  Invoice[]
+  remindersCreated   InvoiceReminder[] @relation("ReminderCreatedBy")
+  cancelLogs         CancelLog[]       @relation("CancelLogUser")
+  payments           Payment[]         @relation("PaymentCreatedBy")
 }
 
 model Supplier {
@@ -60,6 +64,7 @@ model Supplier {
   state        String    @default("")
   country      String    @default("")
   postalCode   String    @default("")
+  isArchived   Boolean   @default(false)
   invoices     Invoice[]
   products     Product[]
 }
@@ -69,7 +74,7 @@ model Buyer {
   name         String
   email        String
   phone        String
-  gstin        String?   @unique
+  gstin        String?
   addressLine1 String    @default("")
   addressLine2 String?
   area         String    @default("")
@@ -77,6 +82,7 @@ model Buyer {
   state        String    @default("")
   country      String    @default("")
   postalCode   String    @default("")
+  isArchived   Boolean   @default(false)
   invoices     Invoice[]
 }
 
@@ -89,27 +95,39 @@ model Product {
   supplierId   Int?
   category     String?
   title        String
+  hsnCode      String?       @default("00000000")
   createdAt    DateTime      @default(now())
+  isArchived   Boolean       @default(false)
   invoiceItems InvoiceItem[]
   supplier     Supplier?     @relation(fields: [supplierId], references: [id])
 }
 
 model Invoice {
-  id            Int           @id @default(autoincrement())
-  invoiceNo     String        @unique
+  id            Int              @id @default(autoincrement())
+  invoiceNo     String           @unique
   buyerId       Int
   supplierId    Int
   paymentMethod String
   total         Float
   status        String
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  balance       Float         @default(0)
-  serviceCharge Float         @default(0)
-  signature     String?       @db.Text
-  buyer         Buyer         @relation(fields: [buyerId], references: [id])
-  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  dueDate       DateTime?
+  cancelledAt   DateTime?
+  cancelledBy   Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  balance       Float            @default(0)
+  serviceCharge Float            @default(0)
+  signature     String?          @db.Text
+  buyer         Buyer            @relation(fields: [buyerId], references: [id])
+  supplier      Supplier         @relation(fields: [supplierId], references: [id])
+  cancelledByUser User?          @relation(fields: [cancelledBy], references: [id])
   items         InvoiceItem[]
+  reminders     InvoiceReminder[]
+  cancelLogs    CancelLog[]
+  payments      Payment[]
+
+  @@index([status])
+  @@index([dueDate])
 }
 
 model InvoiceItem {
@@ -123,6 +141,55 @@ model InvoiceItem {
   gst         Float
   amount      Float
   discountPct Float
+  hsnCode     String?
   invoice     Invoice  @relation(fields: [invoiceId], references: [id])
   product     Product? @relation(fields: [productId], references: [id])
+}
+
+model InvoiceReminder {
+  id               Int      @id @default(autoincrement())
+  invoiceId        Int
+  toEmail          String
+  sentAt           DateTime?
+  status           String   @default("queued") // queued|sent|failed
+  providerResponse String?  @db.Text
+  createdBy        Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user             User?    @relation("ReminderCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model CancelLog {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  cancelledBy    Int
+  reason         String   @db.Text
+  forceCancelled Boolean  @default(false)
+  cancelledAt    DateTime @default(now())
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user           User     @relation("CancelLogUser", fields: [cancelledBy], references: [id])
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  amount      Float
+  roundOff    Float    @default(0)
+  method      String   // Cash, Card, UPI, Bank Transfer
+  reference   String?  // Transaction ref/check no
+  receivedAt  DateTime @default(now())
+  createdBy   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user        User?    @relation("PaymentCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([receivedAt])
 }

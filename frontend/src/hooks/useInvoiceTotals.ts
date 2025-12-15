@@ -10,6 +10,7 @@ export interface InvoiceItem {
     taxRate: number
     discount: number
     uom?: string
+    hsnCode?: string
 }
 
 export interface InvoiceTotals {

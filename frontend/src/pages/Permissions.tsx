@@ -131,14 +131,14 @@ export default function Permissions() {
                   {canManage && (
                     <>
                       <button
-                        className="btn-secondary"
+                        className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
                         onClick={() => open(p)}
                       >
                         Edit
                       </button>
 
                       <button
-                        className="btn-danger"
+                        className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
                         onClick={() => remove(p.id)}
                       >
                         Delete

@@ -67,8 +67,19 @@ export default function InvoiceEdit() {
                 const { data } = await api.get(`/invoices/${invoiceNo}`)
 
                 // Set basic fields
-                setInvoiceDate(data.invoiceDate ? new Date(data.invoiceDate).toISOString().split('T')[0] : '')
-                setDueDate(data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : '')
+                const loadedInvoiceDate = data.invoiceDate ? new Date(data.invoiceDate).toISOString().split('T')[0] : ''
+                const loadedDueDate = data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : ''
+
+                // Auto-fill invoice date with current date if empty
+                if (!loadedInvoiceDate) {
+                    const now = new Date()
+                    const localDate = now.toISOString().split('T')[0] // YYYY-MM-DD format
+                    setInvoiceDate(localDate)
+                } else {
+                    setInvoiceDate(loadedInvoiceDate)
+                }
+
+                setDueDate(loadedDueDate)
                 setReference(data.reference || '')
                 setNotes(data.notes || '')
                 setGlobalDiscountPct(data.globalDiscountPct || 0)
@@ -267,7 +278,6 @@ export default function InvoiceEdit() {
                             <CustomerSelect
                                 value={customer}
                                 onChange={setCustomer}
-                                onNavigateToCreate={() => navigate('/buyers/new')}
                             />
                             {errors.customer && <p className="text-red-600 text-sm mt-2">{errors.customer}</p>}
                         </div>

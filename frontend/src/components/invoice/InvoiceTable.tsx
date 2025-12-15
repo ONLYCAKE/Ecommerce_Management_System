@@ -38,6 +38,7 @@ export default function InvoiceTable({ items, onChange, perLineTotals = [] }: In
                     <tr className="bg-gray-50 border-b-2 border-gray-200">
                         <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 w-8">#</th>
                         <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700">Product</th>
+                        <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 w-24">HSN/SAC</th>
                         <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 w-20">Qty</th>
                         <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-28">Unit Price</th>
                         <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-24">Discount %</th>
@@ -49,7 +50,7 @@ export default function InvoiceTable({ items, onChange, perLineTotals = [] }: In
                 <tbody>
                     {items.length === 0 ? (
                         <tr>
-                            <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                            <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                                 No items added yet. Search and add products above.
                             </td>
                         </tr>
@@ -91,6 +92,9 @@ export default function InvoiceTable({ items, onChange, perLineTotals = [] }: In
                                                 <div className="text-xs text-gray-500">UoM: {item.uom}</div>
                                             )}
                                         </div>
+                                    </td>
+                                    <td className="px-2 py-2">
+                                        <div className="text-xs font-mono text-gray-600">{item.hsnCode || '-'}</div>
                                     </td>
                                     <td className="px-2 py-2">
                                         <input

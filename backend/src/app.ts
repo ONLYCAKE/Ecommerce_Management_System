@@ -14,6 +14,7 @@ import productRoutes from './routes/products.ts';
 import ordersRoutes from './routes/orders.ts';
 import invoicesRoutes from './routes/invoices.ts';
 import statsRoutes from './routes/stats.ts';
+import paymentRoutes from './routes/payments.ts';
 
 import { prisma } from './prisma.ts';
 import { ADMIN_PERMISSIONS, EMPLOYEE_PERMISSIONS } from './constants/permissions.ts';
@@ -52,6 +53,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // -------------------- GLOBAL ERROR HANDLER --------------------
 app.use(

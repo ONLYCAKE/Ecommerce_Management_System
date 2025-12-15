@@ -170,7 +170,22 @@ export default function Users() {
       `}</style>
 
       <div className="flex justify-between items-center">
-        <input className="input max-w-xs" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="flex items-center gap-3">
+          <input className="input max-w-xs" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+
+          {/* Checkbox for Archived Users */}
+          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
+            <input
+              type="checkbox"
+              checked={archived}
+              onChange={(e) => setArchived(e.target.checked)}
+              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              {archived ? '📦 Showing Archived' : 'Show Archived'}
+            </span>
+          </label>
+        </div>
 
         <div className="flex items-center gap-3">
           <label className="text-sm text-gray-600">Rows</label>
@@ -208,19 +223,19 @@ export default function Users() {
                 <td>{u.isArchived ? (<span className="text-red-600">Archived</span>) : ('Active')}</td>
                 <td className="text-center space-x-2">
                   {canUpdate('user') && !u.isArchived && (
-                    <button className="btn-secondary" onClick={() => openEdit(u)}>Edit</button>
+                    <button className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors" onClick={() => openEdit(u)}>Edit</button>
                   )}
 
                   {canUpdate('user') && !u.isArchived && (
-                    <button className="btn btn-secondary text-white" onClick={() => archive(u.id)}>Archive</button>
+                    <button className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors" onClick={() => archive(u.id)}>Archive</button>
                   )}
 
                   {canDelete('user') && !u.isArchived && (
-                    <button className="btn-danger" onClick={() => deleteUser(u.id)}>Delete</button>
+                    <button className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors" onClick={() => deleteUser(u.id)}>Delete</button>
                   )}
 
                   {canUpdate('user') && u.isArchived && (
-                    <button className="btn-restore" onClick={() => restoreUser(u.id)}>Restore</button>
+                    <button className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors" onClick={() => restoreUser(u.id)}>Restore</button>
                   )}
                 </td>
               </tr>
@@ -254,87 +269,207 @@ export default function Users() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <h3 className="text-xl font-semibold mb-4 text-gray-800">{editing ? 'Edit User' : 'Add User'}</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-6 rounded-t-xl">
+              <h3 className="text-2xl font-bold">
+                {editing ? '✏️ Edit User' : '➕ Add New User'}
+              </h3>
+              <p className="text-blue-100 text-sm mt-1">
+                {editing ? 'Update user information' : 'Fill in the details to create a new user'}
+              </p>
+            </div>
 
-            <form onSubmit={save} className="space-y-4">
-              <div>
-                <label className="text-sm text-gray-700">Email</label>
-                <input className="input w-full mt-1" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+            <form onSubmit={save} className="p-8">
+              {/* Basic Information Section */}
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-500 flex items-center gap-2">
+                    <span>📋</span> Basic Information
+                  </h4>
+                  <div className="grid grid-cols-1 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        value={form.email}
+                        onChange={(e) => setForm({ ...form, email: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    {!editing && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Password <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          type="password"
+                          value={form.password}
+                          onChange={(e) => setForm({ ...form, password: e.target.value })}
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          First Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.firstName}
+                          onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Last Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.lastName}
+                          onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Role <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        value={form.roleId ?? ''}
+                        onChange={(e) => setForm({ ...form, roleId: parseInt(e.target.value) })}
+                        required
+                      >
+                        <option value="">Select Role</option>
+                        {roles.map((r) => (<option key={r.id} value={r.id}>{r.name}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Section */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-purple-500 flex items-center gap-2">
+                    <span>🏠</span> Address Details
+                  </h4>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Address Line 1
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.addressLine1}
+                          onChange={(e) => setForm({ ...form, addressLine1: e.target.value })}
+                          placeholder="Street address"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Address Line 2 <span className="text-gray-400 text-xs">(Optional)</span>
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.addressLine2}
+                          onChange={(e) => setForm({ ...form, addressLine2: e.target.value })}
+                          placeholder="Apartment, suite, etc."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Area
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.area}
+                          onChange={(e) => setForm({ ...form, area: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          City
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.city}
+                          onChange={(e) => setForm({ ...form, city: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          State
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.state}
+                          onChange={(e) => setForm({ ...form, state: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Country
+                        </label>
+                        <input
+                          className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                          value={form.country}
+                          onChange={(e) => setForm({ ...form, country: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Postal Code
+                      </label>
+                      <input
+                        className="input w-full border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        value={form.postalCode}
+                        onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {!editing && (
-                <div>
-                  <label className="text-sm text-gray-700">Password</label>
-                  <input className="input w-full mt-1" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-6 border-t-2 border-gray-200 mt-8">
+                <p className="text-sm text-gray-500 italic">
+                  <span className="text-red-500">*</span> Required fields
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 flex items-center gap-2"
+                    onClick={() => setShowForm(false)}
+                  >
+                    <span>✕</span> Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-8 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+                  >
+                    <span>💾</span> {editing ? 'Update User' : 'Save User'}
+                  </button>
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-700">First Name</label>
-                  <input className="input w-full mt-1" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-700">Last Name</label>
-                  <input className="input w-full mt-1" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} required />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm text-gray-700">Role</label>
-                <select className="input w-full mt-1" value={form.roleId ?? ''} onChange={(e) => setForm({ ...form, roleId: parseInt(e.target.value) })} required>
-                  <option value="">Select Role</option>
-                  {roles.map((r) => (<option key={r.id} value={r.id}>{r.name}</option>))}
-                </select>
-              </div>
-
-              {/* Address Fields */}
-              <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Address Information</h4>
-
-                <div>
-                  <label className="text-sm text-gray-700">Address Line 1</label>
-                  <input className="input w-full mt-1" value={form.addressLine1} onChange={(e) => setForm({ ...form, addressLine1: e.target.value })} placeholder="Street address" />
-                </div>
-
-                <div className="mt-3">
-                  <label className="text-sm text-gray-700">Address Line 2 (Optional)</label>
-                  <input className="input w-full mt-1" value={form.addressLine2} onChange={(e) => setForm({ ...form, addressLine2: e.target.value })} placeholder="Apartment, suite, etc." />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-3">
-                  <div>
-                    <label className="text-sm text-gray-700">Area</label>
-                    <input className="input w-full mt-1" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-700">City</label>
-                    <input className="input w-full mt-1" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-3">
-                  <div>
-                    <label className="text-sm text-gray-700">State</label>
-                    <input className="input w-full mt-1" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-700">Country</label>
-                    <input className="input w-full mt-1" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="text-sm text-gray-700">Postal Code</label>
-                  <input className="input w-full mt-1" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 mt-6">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn-primary">{editing ? 'Update User' : 'Save User'}</button>
               </div>
             </form>
           </div>

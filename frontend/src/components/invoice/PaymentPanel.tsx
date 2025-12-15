@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 export interface Payment {
     id?: string
     amount: number
+    roundOff?: number
     mode: string
     note: string
 }
@@ -11,6 +12,38 @@ interface PaymentPanelProps {
     payments: Payment[]
     onChange: (payments: Payment[]) => void
     grandTotal: number
+}
+
+const ROUND_OFF_THRESHOLD = 1.00 // ₹1.00
+
+function roundToTwoDecimals(value: number): number {
+    return Math.round(value * 100) / 100
+}
+
+function calculateRoundOff(paymentAmount: number, remainingBalance: number) {
+    const roundedPayment = roundToTwoDecimals(paymentAmount)
+    const roundedBalance = roundToTwoDecimals(remainingBalance)
+
+    // Check if payment is integer (whole number)
+    const isIntegerPayment = roundedPayment === Math.floor(roundedPayment)
+
+    if (!isIntegerPayment) {
+        return { adjustedAmount: roundedPayment, roundOff: 0, shouldApplyRoundOff: false }
+    }
+
+    // Calculate difference
+    const difference = roundToTwoDecimals(roundedPayment - roundedBalance)
+
+    // Apply round-off if difference is within threshold and positive
+    if (difference >= 0 && difference <= ROUND_OFF_THRESHOLD) {
+        return {
+            adjustedAmount: roundedBalance,
+            roundOff: difference,
+            shouldApplyRoundOff: true
+        }
+    }
+
+    return { adjustedAmount: roundedPayment, roundOff: 0, shouldApplyRoundOff: false }
 }
 
 export default function PaymentPanel({ payments, onChange, grandTotal }: PaymentPanelProps) {
@@ -23,12 +56,19 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
     const [error, setError] = useState('')
 
     const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
-    const balance = grandTotal - totalPaid
+    const balance = roundToTwoDecimals(grandTotal - totalPaid)
+
+    // Calculate round-off preview for current input
+    const roundOffPreview = useMemo(() => {
+        if (!newPayment.amount || newPayment.amount <= 0) return null
+        return calculateRoundOff(newPayment.amount, balance)
+    }, [newPayment.amount, balance])
 
     const openPaymentForm = () => {
-        // Auto-fill with remaining balance
+        // Auto-fill with remaining balance rounded up to nearest integer
+        const suggestedAmount = balance > 0 ? Math.ceil(balance) : 0
         setNewPayment({
-            amount: balance > 0 ? balance : 0,
+            amount: suggestedAmount,
             mode: 'Cash',
             note: ''
         })
@@ -42,12 +82,20 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
             return
         }
 
-        if (newPayment.amount > balance) {
+        const { adjustedAmount, roundOff, shouldApplyRoundOff } = calculateRoundOff(newPayment.amount, balance)
+
+        // Validate: payment should not exceed balance unless round-off applies
+        if (!shouldApplyRoundOff && newPayment.amount > balance) {
             setError(`Amount cannot exceed balance of ₹${balance.toFixed(2)}`)
             return
         }
 
-        onChange([...payments, { ...newPayment, id: Date.now().toString() }])
+        onChange([...payments, {
+            ...newPayment,
+            id: Date.now().toString(),
+            amount: adjustedAmount,
+            roundOff: roundOff
+        }])
         setNewPayment({ amount: 0, mode: 'Cash', note: '' })
         setError('')
         setShowForm(false)
@@ -60,11 +108,15 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
     const markFullyPaid = () => {
         if (balance <= 0) return
 
+        const suggestedAmount = Math.ceil(balance)
+        const { adjustedAmount, roundOff } = calculateRoundOff(suggestedAmount, balance)
+
         onChange([...payments, {
             id: Date.now().toString(),
-            amount: balance,
+            amount: adjustedAmount,
+            roundOff: roundOff,
             mode: 'Cash',
-            note: 'Full payment'
+            note: roundOff > 0 ? `Full payment (Round-off: ₹${roundOff.toFixed(2)})` : 'Full payment'
         }])
     }
 
@@ -98,6 +150,11 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
                         <div key={payment.id} className="bg-gray-50 rounded p-2 text-xs flex justify-between items-start">
                             <div>
                                 <div className="font-medium text-gray-900">₹{payment.amount.toFixed(2)}</div>
+                                {payment.roundOff && payment.roundOff > 0 && (
+                                    <div className="text-blue-600 text-[10px]">
+                                        Round-off: +₹{payment.roundOff.toFixed(2)}
+                                    </div>
+                                )}
                                 <div className="text-gray-600">{payment.mode}</div>
                                 {payment.note && <div className="text-gray-500 italic">{payment.note}</div>}
                             </div>
@@ -122,21 +179,30 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
                             {error}
                         </div>
                     )}
+                    {roundOffPreview && roundOffPreview.shouldApplyRoundOff && (
+                        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded text-xs">
+                            💡 Round-off of ₹{roundOffPreview.roundOff.toFixed(2)} will be applied
+                        </div>
+                    )}
                     <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Amount *</label>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Amount (Whole Number) *</label>
                         <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="1"
                             className="input w-full text-sm"
                             value={newPayment.amount || ''}
                             onChange={(e) => {
-                                setNewPayment({ ...newPayment, amount: parseFloat(e.target.value) || 0 })
+                                const value = parseInt(e.target.value) || 0
+                                setNewPayment({ ...newPayment, amount: value })
                                 setError('')
                             }}
-                            placeholder="Enter amount"
+                            placeholder="Enter whole number amount"
                             autoFocus
                         />
+                        <div className="text-[10px] text-gray-500 mt-1">
+                            Enter integer amounts only (e.g., 1000, 1500)
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Mode</label>

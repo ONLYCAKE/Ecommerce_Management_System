@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/client'
+import BuyerFormModal from './BuyerFormModal'
 
 interface Buyer {
     id: number
@@ -19,15 +20,15 @@ interface Buyer {
 interface CustomerSelectProps {
     value: Buyer | null
     onChange: (buyer: Buyer | null) => void
-    onNavigateToCreate?: () => void
 }
 
-export default function CustomerSelect({ value, onChange, onNavigateToCreate }: CustomerSelectProps) {
+export default function CustomerSelect({ value, onChange }: CustomerSelectProps) {
     const [search, setSearch] = useState('')
     const [buyers, setBuyers] = useState<Buyer[]>([])
     const [allBuyers, setAllBuyers] = useState<Buyer[]>([])
     const [isOpen, setIsOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [showBuyerModal, setShowBuyerModal] = useState(false)
     const wrapperRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -42,20 +43,21 @@ export default function CustomerSelect({ value, onChange, onNavigateToCreate }: 
 
     // Load all buyers on mount
     useEffect(() => {
-        const loadAllBuyers = async () => {
-            setLoading(true)
-            try {
-                const { data } = await api.get('/buyers')
-                setAllBuyers(data || [])
-                setBuyers(data || [])
-            } catch (err) {
-                console.error('Error loading buyers:', err)
-            } finally {
-                setLoading(false)
-            }
-        }
-        loadAllBuyers()
+        loadBuyers()
     }, [])
+
+    const loadBuyers = async () => {
+        setLoading(true)
+        try {
+            const { data } = await api.get('/buyers')
+            setAllBuyers(data || [])
+            setBuyers(data || [])
+        } catch (err) {
+            console.error('Error loading buyers:', err)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     // Filter buyers based on search
     useEffect(() => {
@@ -82,6 +84,16 @@ export default function CustomerSelect({ value, onChange, onNavigateToCreate }: 
         onChange(null)
         setSearch('')
         setBuyers(allBuyers)
+    }
+
+    const handleBuyerCreated = (newBuyer: Buyer) => {
+        // Add to buyers list
+        setAllBuyers([...allBuyers, newBuyer])
+        setBuyers([...allBuyers, newBuyer])
+        // Auto-select the new buyer
+        onChange(newBuyer)
+        // Close modal
+        setShowBuyerModal(false)
     }
 
     return (
@@ -118,15 +130,13 @@ export default function CustomerSelect({ value, onChange, onNavigateToCreate }: 
                             Clear
                         </button>
                     )}
-                    {onNavigateToCreate && (
-                        <button
-                            type="button"
-                            className="btn-primary"
-                            onClick={onNavigateToCreate}
-                        >
-                            + Add New
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => setShowBuyerModal(true)}
+                    >
+                        + Add New
+                    </button>
                 </div>
 
                 {/* Dropdown */}
@@ -184,6 +194,13 @@ export default function CustomerSelect({ value, onChange, onNavigateToCreate }: 
                     </div>
                 </div>
             )}
+
+            {/* Buyer Form Modal */}
+            <BuyerFormModal
+                isOpen={showBuyerModal}
+                onClose={() => setShowBuyerModal(false)}
+                onSuccess={handleBuyerCreated}
+            />
         </div>
     )
 }

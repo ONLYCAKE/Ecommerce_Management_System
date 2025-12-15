@@ -22,6 +22,7 @@ export default function Buyers() {
   const [pageSize, setPageSize] = useState(10)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Buyer | null>(null)
+  const [archived, setArchived] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -57,7 +58,7 @@ export default function Buyers() {
   ------------------------------------------------------------ */
   const fetchAll = async () => {
     try {
-      const { data } = await api.get('/buyers')
+      const { data } = await api.get('/buyers', { params: { archived } })
       setItems(data)
     } catch (err) {
       console.error('Error fetching buyers', err)
@@ -66,7 +67,7 @@ export default function Buyers() {
 
   useEffect(() => {
     fetchAll()
-  }, [])
+  }, [archived])
 
   /* ------------------------------------------------------------
      Searching & Pagination
@@ -190,11 +191,11 @@ export default function Buyers() {
     }
   }
 
-  const remove = async (id: number) => {
+  const archiveBuyer = async (id: number) => {
     if (!canDelete('buyer')) return
     const ok = await confirmModal({
-      title: 'Delete buyer?',
-      description: 'This action cannot be undone.'
+      title: 'Archive buyer?',
+      description: 'This will archive the buyer. You can restore it later from the archived view.'
     })
     if (!ok) return
 
@@ -202,7 +203,39 @@ export default function Buyers() {
       await api.delete(`/buyers/${id}`)
       fetchAll()
     } catch (err) {
+      console.error('Error archiving buyer', err)
+    }
+  }
+
+  const deleteBuyer = async (id: number) => {
+    if (!canDelete('buyer')) return
+    const ok = await confirmModal({
+      title: 'Permanently delete buyer?',
+      description: 'This action cannot be undone. The buyer will be permanently removed from the database.'
+    })
+    if (!ok) return
+
+    try {
+      await api.delete(`/buyers/${id}/permanent`)
+      fetchAll()
+    } catch (err) {
       console.error('Error deleting buyer', err)
+    }
+  }
+
+  const restoreBuyer = async (id: number) => {
+    if (!canUpdate('buyer')) return
+    const ok = await confirmModal({
+      title: 'Restore buyer?',
+      description: 'This will unarchive the buyer and make them active again.'
+    })
+    if (!ok) return
+
+    try {
+      await api.patch(`/buyers/${id}/restore`, {})
+      fetchAll()
+    } catch (err) {
+      console.error('Error restoring buyer', err)
     }
   }
 
@@ -225,6 +258,19 @@ export default function Buyers() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
+
+          {/* Checkbox for Archived Buyers */}
+          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
+            <input
+              type="checkbox"
+              checked={archived}
+              onChange={(e) => setArchived(e.target.checked)}
+              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              {archived ? '📦 Showing Archived' : 'Show Archived'}
+            </span>
+          </label>
         </div>
 
         <div className="flex items-center gap-4">
@@ -319,7 +365,7 @@ export default function Buyers() {
 
                   <td className="py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {canUpdate('buyer') && (
+                      {!archived && canUpdate('buyer') && (
                         <button
                           className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
                           onClick={() => open(b)}
@@ -328,12 +374,30 @@ export default function Buyers() {
                         </button>
                       )}
 
-                      {canDelete('buyer') && (
+                      {!archived && canDelete('buyer') && (
                         <button
                           className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                          onClick={() => remove(b.id)}
+                          onClick={() => deleteBuyer(b.id)}
                         >
                           Delete
+                        </button>
+                      )}
+
+                      {!archived && canDelete('buyer') && (
+                        <button
+                          className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors"
+                          onClick={() => archiveBuyer(b.id)}
+                        >
+                          Archive
+                        </button>
+                      )}
+
+                      {archived && canUpdate('buyer') && (
+                        <button
+                          className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
+                          onClick={() => restoreBuyer(b.id)}
+                        >
+                          Restore
                         </button>
                       )}
                     </div>

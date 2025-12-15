@@ -27,6 +27,7 @@ export default function Suppliers() {
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
+  const [archived, setArchived] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -63,17 +64,17 @@ export default function Suppliers() {
   ------------------------------------------------------------ */
   const fetchAll = async () => {
     try {
-      const { data } = await api.get("/suppliers");
-      setItems(data || []);
+      const { data } = await api.get("/suppliers", { params: { archived } });
+      setItems(data);
     } catch (err) {
-      console.error("❌ Error loading suppliers", err);
+      console.error("Error loading suppliers", err);
       setItems([]);
     }
   };
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [archived]);
 
   /* ------------------------------------------------------------
      Search + Filter
@@ -162,19 +163,41 @@ export default function Suppliers() {
   };
 
   /* ------------------------------------------------------------
-     Delete Supplier
+     Archive/Delete/Restore Supplier
   ------------------------------------------------------------ */
-  const remove = async (id: number) => {
+  const archiveSupplier = async (id: number) => {
     if (!canDelete("supplier")) return;
 
     const ok = await confirmModal({
-      title: "Delete supplier?",
-      description: "This action cannot be undone.",
+      title: "Archive supplier?",
+      description: "This will archive the supplier. You can restore it later from the archived view.",
     });
     if (!ok) return;
 
     try {
       await api.delete(`/suppliers/${id}`);
+      setToast("✅ Supplier archived");
+      setTimeout(() => setToast(null), 1800);
+      fetchAll();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Archive failed";
+      setToast(`⚠️ ${msg}`);
+      setTimeout(() => setToast(null), 2500);
+      console.error("❌ Archive failed", err);
+    }
+  };
+
+  const deleteSupplier = async (id: number) => {
+    if (!canDelete("supplier")) return;
+
+    const ok = await confirmModal({
+      title: "Permanently delete supplier?",
+      description: "This action cannot be undone. The supplier will be permanently removed from the database.",
+    });
+    if (!ok) return;
+
+    try {
+      await api.delete(`/suppliers/${id}/permanent`);
       setToast("✅ Supplier deleted");
       setTimeout(() => setToast(null), 1800);
       fetchAll();
@@ -183,6 +206,28 @@ export default function Suppliers() {
       setToast(`⚠️ ${msg}`);
       setTimeout(() => setToast(null), 2500);
       console.error("❌ Delete failed", err);
+    }
+  };
+
+  const restoreSupplier = async (id: number) => {
+    if (!canUpdate("supplier")) return;
+
+    const ok = await confirmModal({
+      title: "Restore supplier?",
+      description: "This will unarchive the supplier and make them active again.",
+    });
+    if (!ok) return;
+
+    try {
+      await api.patch(`/suppliers/${id}/restore`, {});
+      setToast("✅ Supplier restored");
+      setTimeout(() => setToast(null), 1800);
+      fetchAll();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Restore failed";
+      setToast(`⚠️ ${msg}`);
+      setTimeout(() => setToast(null), 2500);
+      console.error("❌ Restore failed", err);
     }
   };
 
@@ -205,6 +250,19 @@ export default function Suppliers() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
+
+          {/* Checkbox for Archived Suppliers */}
+          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
+            <input
+              type="checkbox"
+              checked={archived}
+              onChange={(e) => setArchived(e.target.checked)}
+              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer"
+            />
+            <span className="text-sm font-medium text-gray-700">
+              {archived ? '📦 Showing Archived' : 'Show Archived'}
+            </span>
+          </label>
         </div>
 
         <div className="flex items-center gap-4">
@@ -294,7 +352,7 @@ export default function Suppliers() {
 
                   <td className="py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {canUpdate("supplier") && (
+                      {!archived && canUpdate("supplier") && (
                         <button
                           className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
                           onClick={() => open(s)}
@@ -303,12 +361,30 @@ export default function Suppliers() {
                         </button>
                       )}
 
-                      {canDelete("supplier") && (
+                      {!archived && canDelete("supplier") && (
                         <button
                           className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                          onClick={() => remove(s.id)}
+                          onClick={() => deleteSupplier(s.id)}
                         >
                           Delete
+                        </button>
+                      )}
+
+                      {!archived && canDelete("supplier") && (
+                        <button
+                          className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors"
+                          onClick={() => archiveSupplier(s.id)}
+                        >
+                          Archive
+                        </button>
+                      )}
+
+                      {archived && canUpdate("supplier") && (
+                        <button
+                          className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
+                          onClick={() => restoreSupplier(s.id)}
+                        >
+                          Restore
                         </button>
                       )}
                     </div>

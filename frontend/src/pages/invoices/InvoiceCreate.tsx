@@ -30,6 +30,7 @@ interface Product {
     title: string
     price: number
     stock: number
+    hsnCode?: string
 }
 
 const SELLER_STATE = 'Gujarat'
@@ -85,7 +86,8 @@ export default function InvoiceCreate() {
             unitPrice: product.price,
             taxRate: 18, // Default GST rate
             discount: 0,
-            uom: 'Pcs'
+            uom: 'Pcs',
+            hsnCode: product.hsnCode || ''
         }
         setItems([...items, newItem])
     }
@@ -141,7 +143,8 @@ export default function InvoiceCreate() {
                     qty: item.qty,
                     price: item.unitPrice,
                     gst: item.taxRate,
-                    discountPct: item.discount
+                    discountPct: item.discount,
+                    hsnCode: item.hsnCode
                 })),
                 notes,
                 paymentMethod: payments.length > 0 ? payments[0].mode : 'Cash',
@@ -242,7 +245,6 @@ export default function InvoiceCreate() {
                             <CustomerSelect
                                 value={customer}
                                 onChange={setCustomer}
-                                onNavigateToCreate={() => navigate('/buyers/new')}
                             />
                             {errors.customer && <p className="text-red-600 text-sm mt-2">{errors.customer}</p>}
                         </div>

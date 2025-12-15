@@ -23,7 +23,10 @@ export default function Sidebar() {
   return (
     <aside className={`h-screen sticky top-0 ${collapsed ? 'w-16' : 'w-64'} transition-all flex flex-col`} style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
       <div className="flex items-center justify-between px-4 py-4">
-        <div className={`font-heading font-medium text-text ${collapsed ? 'opacity-0' : 'opacity-100'} transition-all`}>Ecom Admin</div>
+        <div className={`flex items-center gap-3 ${collapsed ? 'opacity-0' : 'opacity-100'} transition-all`}>
+          <img src="/logo.jpg" alt="Company Logo" className="h-10 w-10 rounded-lg object-contain bg-white p-1" />
+          <div className="font-heading font-medium text-text">Uday Dairy</div>
+        </div>
         <button onClick={() => setCollapsed(v => !v)} className="p-2 rounded-lg hover:bg-blue-100 hover:text-primary">
           <FiChevronLeft className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
         </button>
@@ -46,9 +49,9 @@ export default function Sidebar() {
         >
           <div className="relative">
             <img
-              src={(user as any)?.photo || avatarDefault}
-              alt="Profile"
-              className="h-10 w-10 rounded-full object-cover shadow-md ring-2 ring-white/20 transform transition-transform duration-200 group-hover:scale-105"
+              src="/logo.jpg"
+              alt="Company Logo"
+              className="h-10 w-10 rounded-full object-cover shadow-md ring-2 ring-white/20 transform transition-transform duration-200 group-hover:scale-105 bg-white p-1"
             />
             <span
               className={`absolute -right-2 -bottom-2 text-[10px] px-2 py-0.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity ${user?.role === 'SuperAdmin' ? 'bg-purple-600 text-white' :

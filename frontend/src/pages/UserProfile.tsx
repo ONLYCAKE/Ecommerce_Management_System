@@ -27,7 +27,7 @@ export default function UserProfile() {
 
   const roleBadgeColor =
     user?.role === 'SuperAdmin' ? 'bg-purple-100 text-purple-700' :
-    user?.role === 'Admin' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+      user?.role === 'Admin' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
 
   const handleCopy = async () => {
     if (!user?.email) return
@@ -35,7 +35,7 @@ export default function UserProfile() {
       await navigator.clipboard.writeText(user.email)
       setCopied(true)
       setTimeout(() => setCopied(false), 1200)
-    } catch {}
+    } catch { }
   }
 
   return (
@@ -52,7 +52,7 @@ export default function UserProfile() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
             <div>
-              <img src={(user as any)?.photo || avatarDefault} alt="Profile" className="h-32 w-32 rounded-full border border-gray-300 object-cover shadow-sm" />
+              <img src="/logo.jpg" alt="Company Logo" className="h-32 w-32 rounded-full border border-gray-300 object-cover shadow-sm bg-white p-2" />
             </div>
 
             <div className="flex-1">
