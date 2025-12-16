@@ -33,6 +33,8 @@ router.post('/', requirePermission(PERMISSIONS.PRODUCT_CREATE), async (req, res)
     const supplierId = dataIn.supplierId && !isNaN(Number(dataIn.supplierId)) ? Number(dataIn.supplierId) : null;
     const price = Number(dataIn.price) || 0;
     const stock = Number(dataIn.stock) || 0;
+    const taxType = dataIn.taxType || 'withTax';
+    const taxRate = taxType === 'withTax' ? (Number(dataIn.taxRate) || 18) : 0;
     const data = {
       sku: dataIn.sku || null,
       title: dataIn.title?.trim(),
@@ -41,7 +43,9 @@ router.post('/', requirePermission(PERMISSIONS.PRODUCT_CREATE), async (req, res)
       price,
       stock,
       supplierId,
-      hsnCode: dataIn.hsnCode || null
+      hsnCode: dataIn.hsnCode || null,
+      taxType,
+      taxRate
     };
     const item = await prisma.product.create({ data: data as any });
     res.status(201).json(item);
@@ -58,6 +62,8 @@ router.put('/:id', requirePermission(PERMISSIONS.PRODUCT_UPDATE), async (req, re
     const supplierId = dataIn.supplierId === null || dataIn.supplierId === '' ? null : !isNaN(Number(dataIn.supplierId)) ? Number(dataIn.supplierId) : null;
     const price = dataIn.price !== undefined && !isNaN(Number(dataIn.price)) ? Number(dataIn.price) : undefined;
     const stock = dataIn.stock !== undefined && !isNaN(Number(dataIn.stock)) ? Number(dataIn.stock) : undefined;
+    const taxType = dataIn.taxType || undefined;
+    const taxRate = taxType === 'withTax' ? (dataIn.taxRate !== undefined ? Number(dataIn.taxRate) : undefined) : (taxType === 'withoutTax' ? 0 : undefined);
     const data: any = {
       title: dataIn.title?.trim(),
       description: dataIn.description || null,
@@ -65,7 +71,9 @@ router.put('/:id', requirePermission(PERMISSIONS.PRODUCT_UPDATE), async (req, re
       ...(price !== undefined && { price }),
       ...(stock !== undefined && { stock }),
       supplierId,
-      hsnCode: dataIn.hsnCode || null
+      hsnCode: dataIn.hsnCode || null,
+      ...(taxType !== undefined && { taxType }),
+      ...(taxRate !== undefined && { taxRate })
     };
     const item = await prisma.product.update({ where: { id }, data, include: { supplier: true } });
     res.json(item);

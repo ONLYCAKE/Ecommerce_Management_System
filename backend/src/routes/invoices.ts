@@ -5,7 +5,6 @@ import {
     getInvoiceByNo,
     createInvoice,
     updateInvoice,
-    deleteInvoice,
     generateInvoicePdf,
     markComplete,
     getNextInvoiceNo,
@@ -14,7 +13,7 @@ import {
     sendInvoiceReminder,
     bulkSendReminders,
     getInvoiceReminders,
-    cancelInvoice,
+    finalizeInvoice,
     getInvoiceSummary
 } from '../controllers/invoiceController';
 import { PERMISSIONS } from '../constants/permissions';
@@ -34,7 +33,6 @@ router.get('/:invoiceNo/download', requirePermission(PERMISSIONS.INVOICE_READ), 
 // invoice operations (explicit routes)
 router.post('/', requirePermission(PERMISSIONS.INVOICE_CREATE), createInvoice);
 router.put('/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_UPDATE), updateInvoice);
-router.delete('/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_DELETE), deleteInvoice);
 
 // status & actions
 router.post('/mark-complete/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_UPDATE), markComplete);
@@ -45,10 +43,11 @@ router.post('/:invoiceNo/send-reminder', requirePermission(PERMISSIONS.INVOICE_R
 router.post('/bulk/send-reminders', requirePermission(PERMISSIONS.INVOICE_READ), bulkSendReminders);
 router.get('/:invoiceNo/reminders', requirePermission(PERMISSIONS.INVOICE_READ), getInvoiceReminders);
 
-// Cancel route
-router.patch('/:invoiceNo/cancel', requirePermission(PERMISSIONS.INVOICE_UPDATE), cancelInvoice);
+// Finalize draft invoice route
+router.post('/:invoiceNo/finalize', requirePermission(PERMISSIONS.INVOICE_UPDATE), finalizeInvoice);
 
 // GET single invoice must be last among invoiceNo routes to avoid shadowing other routes
 router.get('/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_READ), getInvoiceByNo);
 
 export default router;
+

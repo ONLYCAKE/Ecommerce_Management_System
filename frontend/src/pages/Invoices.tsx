@@ -1,21 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { io, Socket } from 'socket.io-client'
-import { ChevronDown, DollarSign, ArrowUpDown, Filter, X } from 'lucide-react'
+import { ChevronDown, DollarSign, ArrowUpDown, Filter, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import EmailTemplateModal from '../components/EmailTemplateModal'
 import InvoiceSummaryCard from '../components/InvoiceSummaryCard'
 import PaymentModal from '../components/PaymentModal'
+import PaymentRecordsView from '../components/PartialPaymentsView'
+
+import FinalizeInvoiceModal from '../components/FinalizeInvoiceModal'
 import { calculateInvoiceStatus, formatCurrency } from '../utils/invoiceStatus'
 
 export default function Invoices() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
 
   // Data state
   const [items, setItems] = useState<any[]>([])
@@ -26,9 +30,18 @@ export default function Invoices() {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string[]>([])
   const [showPaymentFilter, setShowPaymentFilter] = useState(false)
   const [dateFilter, setDateFilter] = useState<Date | null>(null)
+  const [dateFrom, setDateFrom] = useState<Date | null>(null)
+  const [dateTo, setDateTo] = useState<Date | null>(null)
+  const [partyNameSearch, setPartyNameSearch] = useState<string>('')
+  const [showPartyNameFilter, setShowPartyNameFilter] = useState(false)
+  const [reportMode, setReportMode] = useState<string | null>(null)
+
+  // Pagination state
+  const [page, setPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(10)
 
   // Sort state
-  const [sortBy, setSortBy] = useState<'invoiceNo' | 'total' | 'partyName' | null>(null)
+  const [sortBy, setSortBy] = useState<'invoiceNo' | 'total' | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
   // Modal state
@@ -37,8 +50,30 @@ export default function Invoices() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedPaymentInvoice, setSelectedPaymentInvoice] = useState<any>(null)
 
+  // Finalize modal
+  const [selectedFinalizeInvoice, setSelectedFinalizeInvoice] = useState<any>(null)
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false)
+
   // Socket state
   const [socket, setSocket] = useState<Socket | null>(null)
+
+  // Initialize filters from URL params (for Sale Report / Daybook Report navigation)
+  useEffect(() => {
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    const status = searchParams.get('status')
+
+    if (from) setDateFrom(new Date(from))
+    if (to) setDateTo(new Date(to))
+    if (status && status !== 'all') setStatusFilter(status)
+
+    // Set report mode based on URL
+    if (from === to && from) {
+      setReportMode('daybook')
+    } else if (from && to) {
+      setReportMode('sale')
+    }
+  }, [searchParams])
 
   const canCreate = useMemo(() => (user?.permissions || []).includes('invoice.create') || user?.role === 'SuperAdmin', [user])
   const canUpdate = useMemo(() => (user?.permissions || []).includes('invoice.update') || user?.role === 'SuperAdmin', [user])
@@ -51,13 +86,22 @@ export default function Invoices() {
 
       if (statusFilter !== 'All') params.append('status', statusFilter)
       if (paymentMethodFilter.length > 0) params.append('paymentMethod', paymentMethodFilter.join(','))
-      if (dateFilter) {
-        // Send date in YYYY-MM-DD format for server-side filtering
+
+      // Handle date range filters (from Sale Report / Daybook Report)
+      if (dateFrom && dateTo) {
+        params.append('dateFrom', dateFrom.toISOString().split('T')[0])
+        params.append('dateTo', dateTo.toISOString().split('T')[0])
+      } else if (dateFilter) {
+        // Single date filter (legacy)
         params.append('date', dateFilter.toISOString().split('T')[0])
       }
+
       if (sortBy) {
         params.append('sortBy', sortBy)
         params.append('sortOrder', sortOrder)
+      }
+      if (partyNameSearch.trim()) {
+        params.append('partyName', partyNameSearch.trim())
       }
 
       const { data } = await api.get(`/invoices?${params.toString()}`)
@@ -70,10 +114,18 @@ export default function Invoices() {
     }
   }
 
+  // Clear report mode and date range
+  const clearReportFilters = () => {
+    setDateFrom(null)
+    setDateTo(null)
+    setReportMode(null)
+    navigate('/invoices', { replace: true })
+  }
+
   // Load on filter/sort change
   useEffect(() => {
     load()
-  }, [statusFilter, paymentMethodFilter, dateFilter, sortBy, sortOrder])
+  }, [statusFilter, paymentMethodFilter, dateFilter, dateFrom, dateTo, sortBy, sortOrder, partyNameSearch])
 
   // Socket.IO real-time updates
   useEffect(() => {
@@ -126,7 +178,7 @@ export default function Invoices() {
   }, [])
 
   // Handle sort
-  const handleSort = (column: 'invoiceNo' | 'total' | 'partyName') => {
+  const handleSort = (column: 'invoiceNo' | 'total') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
@@ -135,21 +187,15 @@ export default function Invoices() {
     }
   }
 
-  // Sort items client-side for partyName (server-side for others)
-  const sortedItems = useMemo(() => {
-    if (sortBy === 'partyName') {
-      return [...items].sort((a, b) => {
-        const nameA = a.buyer?.name || ''
-        const nameB = b.buyer?.name || ''
-        if (sortOrder === 'asc') {
-          return nameA.localeCompare(nameB)
-        } else {
-          return nameB.localeCompare(nameA)
-        }
-      })
-    }
-    return items
-  }, [items, sortBy, sortOrder])
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
+  const start = (page - 1) * pageSize
+  const sortedItems = items.slice(start, start + pageSize)
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, partyNameSearch, dateFilter])
 
   // Handle email modal
   const openEmailModal = (invoice: any) => {
@@ -160,6 +206,31 @@ export default function Invoices() {
   const closeEmailModal = () => {
     setShowEmailModal(false)
     setSelectedInvoice(null)
+  }
+
+
+
+  // Handle finalize draft invoice
+  const openFinalizeModal = (invoice: any) => {
+    setSelectedFinalizeInvoice(invoice)
+    setShowFinalizeModal(true)
+  }
+
+  const closeFinalizeModal = () => {
+    setShowFinalizeModal(false)
+    setSelectedFinalizeInvoice(null)
+  }
+
+  const handleFinalize = async () => {
+    if (!selectedFinalizeInvoice) return
+
+    try {
+      await api.post(`/invoices/${selectedFinalizeInvoice.invoiceNo}/finalize`)
+      toast.success('Invoice finalized successfully!')
+      load() // Reload list
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to finalize invoice')
+    }
   }
 
   // Handle payment modal
@@ -182,6 +253,18 @@ export default function Invoices() {
 
   // Render status chip
   const renderStatus = (invoice: any) => {
+    // Check database status first (for Draft and Cancelled)
+    if (invoice.status === 'Draft') {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+          Draft
+        </span>
+      )
+    }
+
+
+
+    // For other statuses, use payment-based calculation
     const receivedAmount = invoice.receivedAmount || 0
     const status = calculateInvoiceStatus(invoice.total, receivedAmount)
 
@@ -194,17 +277,66 @@ export default function Invoices() {
 
   return (
     <div className="p-8 min-h-screen bg-gray-50">
+      {/* Report Banner - shown when accessing from Dashboard */}
+      {reportMode && (
+        <div className={`mb-4 p-4 rounded-lg flex items-center justify-between ${reportMode === 'daybook'
+            ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white'
+            : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+          }`}>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{reportMode === 'daybook' ? '📅' : '📈'}</span>
+            <div>
+              <div className="font-bold text-lg">
+                {reportMode === 'daybook' ? 'Daybook Report' : 'Sale Report'}
+              </div>
+              <div className="text-sm opacity-90">
+                {reportMode === 'daybook'
+                  ? `Showing invoices created today (${dateFrom?.toLocaleDateString('en-IN')})`
+                  : `Showing invoices from ${dateFrom?.toLocaleDateString('en-IN')} to ${dateTo?.toLocaleDateString('en-IN')}`
+                }
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={clearReportFilters}
+            className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors font-medium"
+          >
+            Clear Filter
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Sale Invoices</h1>
-        {canCreate && (
-          <button
-            onClick={() => navigate('/invoices/new')}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all"
-          >
-            + Add Sale
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {/* Rows per page selector */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-600">Rows per page:</label>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setPage(1)
+              }}
+              className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          {canCreate && (
+            <button
+              onClick={() => navigate('/invoices/new')}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all"
+            >
+              + Add Sale
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Card */}
@@ -218,7 +350,7 @@ export default function Invoices() {
       {/* Filters */}
       <div className="flex gap-3 mb-4">
         {/* Status Filter Buttons */}
-        {['All', 'Unpaid', 'Partial', 'Paid', 'Cancelled'].map(filter => (
+        {['All', 'Draft', 'Unpaid', 'Partial', 'Paid', 'Payment Records'].map(filter => (
           <button
             key={filter}
             onClick={() => setStatusFilter(filter)}
@@ -286,197 +418,309 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b-2 border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-2">
-                    <span>Date</span>
-                    <div className="relative">
-                      <DatePicker
-                        selected={dateFilter}
-                        onChange={(date) => setDateFilter(date)}
-                        dateFormat="dd/MM/yyyy"
-                        placeholderText="Filter"
-                        isClearable
-                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-28"
-                      />
+      {/* Conditional View: Payment Records or Regular Invoices Table */}
+      {statusFilter === 'Payment Records' ? (
+        <PaymentRecordsView />
+      ) : (
+        /* Regular Invoices Table */
+        <div className="bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b-2 border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <span>Date</span>
+                      <div className="relative">
+                        <DatePicker
+                          selected={dateFilter}
+                          onChange={(date) => setDateFilter(date)}
+                          dateFormat="dd/MM/yyyy"
+                          placeholderText="Filter"
+                          isClearable
+                          className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-28"
+                        />
+                      </div>
+                      {dateFilter && (
+                        <button
+                          onClick={() => setDateFilter(null)}
+                          className="p-1 hover:bg-gray-200 rounded"
+                          title="Clear date filter"
+                        >
+                          <X size={14} className="text-gray-500" />
+                        </button>
+                      )}
                     </div>
-                    {dateFilter && (
+                  </th>
+                  <th
+                    className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('invoiceNo')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Invoice No
+                      <ArrowUpDown size={14} className={sortBy === 'invoiceNo' ? 'text-blue-600' : 'text-gray-400'} />
+                    </div>
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <div className="flex items-center gap-2 relative">
+                      <span>Party Name</span>
                       <button
-                        onClick={() => setDateFilter(null)}
+                        onClick={() => setShowPartyNameFilter(!showPartyNameFilter)}
                         className="p-1 hover:bg-gray-200 rounded"
-                        title="Clear date filter"
+                        title="Filter by party name"
                       >
-                        <X size={14} className="text-gray-500" />
+                        <Filter size={14} className={partyNameSearch ? 'text-blue-600' : 'text-gray-400'} />
                       </button>
-                    )}
-                  </div>
-                </th>
-                <th
-                  className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('invoiceNo')}
-                >
-                  <div className="flex items-center gap-2">
-                    Invoice No
-                    <ArrowUpDown size={14} className={sortBy === 'invoiceNo' ? 'text-blue-600' : 'text-gray-400'} />
-                  </div>
-                </th>
-                <th
-                  className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('partyName')}
-                >
-                  <div className="flex items-center gap-2">
-                    Party Name
-                    <ArrowUpDown size={14} className={sortBy === 'partyName' ? 'text-blue-600' : 'text-gray-400'} />
-                  </div>
-                </th>
-                <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Items
-                </th>
-                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Payment Type
-                </th>
-                <th
-                  className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleSort('total')}
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Amount
-                    <ArrowUpDown size={14} className={sortBy === 'total' ? 'text-blue-600' : 'text-gray-400'} />
-                  </div>
-                </th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Balance
-                </th>
-                <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    </div>
-                  </td>
-                </tr>
-              ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    No invoices found
-                  </td>
-                </tr>
-              ) : (
-                sortedItems.map((inv) => {
-                  const receivedAmount = inv.receivedAmount || 0
-                  const balance = inv.balance || (inv.total - receivedAmount)
-                  const itemCount = inv.items?.length || 0
 
-                  return (
-                    <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-700">
-                        {new Date(inv.createdAt).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {inv.invoiceNo}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">
-                        {inv.buyer?.name || 'N/A'}
-                      </td>
-                      <td className="px-4 py-3 text-center text-gray-600">
-                        <span className="px-2 py-1 bg-gray-100 rounded text-xs">
-                          {itemCount} {itemCount === 1 ? 'item' : 'items'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">
-                        {inv.paymentMethod}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        {formatCurrency(inv.total)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-orange-600">
-                        {formatCurrency(balance)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {renderStatus(inv)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          {/* Edit Invoice */}
-                          <button
-                            onClick={() => navigate(`/invoices/${inv.invoiceNo}/edit`)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit Invoice"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-
-                          {/* View Invoice PDF */}
-                          <button
-                            onClick={async () => {
-                              try {
-                                const response = await api.get(`/invoices/generate/${inv.invoiceNo}`, {
-                                  responseType: 'blob'
-                                })
-                                const blob = new Blob([response.data], { type: 'application/pdf' })
-                                const url = window.URL.createObjectURL(blob)
-                                window.open(url, '_blank')
-                              } catch (error) {
-                                console.error('Failed to open PDF:', error)
-                                toast.error('Failed to open invoice PDF')
-                              }
-                            }}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="View Invoice"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-
-                          {/* Send Email */}
-                          <button
-                            onClick={() => openEmailModal(inv)}
-                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                            title="Send Email"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                          </button>
-
-                          {/* Add Payment - only show when balance > 0 */}
-                          {canUpdate && balance > 0 && (
-                            <button
-                              onClick={() => openPaymentModal(inv)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                              title="Add Payment"
-                            >
-                              <DollarSign size={16} />
-                            </button>
-                          )}
+                      {showPartyNameFilter && (
+                        <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50 w-64">
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Party Name</label>
+                              <input
+                                type="text"
+                                value={partyNameSearch}
+                                onChange={(e) => setPartyNameSearch(e.target.value)}
+                                placeholder="Search..."
+                                className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setPartyNameSearch('')
+                                  setShowPartyNameFilter(false)
+                                }}
+                                className="flex-1 px-3 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                onClick={() => setShowPartyNameFilter(false)}
+                                className="flex-1 px-3 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Items
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Payment Type
+                  </th>
+                  <th
+                    className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('total')}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Amount
+                      <ArrowUpDown size={14} className={sortBy === 'total' ? 'text-blue-600' : 'text-gray-400'} />
+                    </div>
+                  </th>
+                  <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Balance
+                  </th>
+                  <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                      No invoices found
+                    </td>
+                  </tr>
+                ) : (
+                  sortedItems.map((inv) => {
+                    const receivedAmount = inv.receivedAmount || 0
+                    const balance = inv.balance || (inv.total - receivedAmount)
+                    const itemCount = inv.items?.length || 0
+
+                    return (
+                      <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-gray-700">
+                          {new Date(inv.createdAt).toLocaleDateString('en-GB')}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {inv.invoiceNo}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {inv.buyer?.name || 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-center text-gray-600">
+                          <span className="px-2 py-1 bg-gray-100 rounded text-xs">
+                            {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {inv.paymentMethod}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                          {formatCurrency(inv.total)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-orange-600">
+                          {formatCurrency(balance)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {renderStatus(inv)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            {/* Show NO action buttons for Cancelled invoices */}
+                            {inv.status === 'Cancelled' ? (
+                              <span className="text-sm text-gray-400 italic">No actions available</span>
+                            ) : (
+                              <>
+                                {/* Edit Invoice */}
+                                <button
+                                  onClick={() => navigate(`/invoices/${inv.invoiceNo}/edit`)}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Edit Invoice"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+
+                                {/* Finalize Draft - only for Draft invoices */}
+                                {inv.status === 'Draft' && canUpdate && (
+                                  <button
+                                    onClick={() => openFinalizeModal(inv)}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Finalize Draft"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                  </button>
+                                )}
+
+                                {/* View Invoice PDF - disabled for Draft */}
+                                {inv.status !== 'Draft' && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const response = await api.get(`/invoices/generate/${inv.invoiceNo}`, {
+                                          responseType: 'arraybuffer'
+                                        })
+                                        const blob = new Blob([response.data], { type: 'application/pdf' })
+                                        const url = window.URL.createObjectURL(blob)
+                                        window.open(url, '_blank')
+                                      } catch (error) {
+                                        console.error('Failed to open PDF:', error)
+                                        toast.error('Failed to open invoice PDF')
+                                      }
+                                    }}
+                                    className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                    title="View Invoice"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                  </button>
+                                )}
+
+                                {/* Send Email - disabled for Draft */}
+                                {inv.status !== 'Draft' && (
+                                  <button
+                                    onClick={() => openEmailModal(inv)}
+                                    className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                    title="Send Email"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                  </button>
+                                )}
+
+                                {/* Add Payment - only show when balance > 0 AND not Draft */}
+                                {canUpdate && balance > 0 && inv.status !== 'Draft' && (
+                                  <button
+                                    onClick={() => openPaymentModal(inv)}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Add Payment"
+                                  >
+                                    <DollarSign size={16} />
+                                  </button>
+                                )}
+
+
+
+
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          {items.length > 0 && (
+            <div className="mt-4 flex items-center justify-end px-4 pb-4">
+              <div className="flex items-center gap-32">
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <button
+                  className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                  disabled={page === 1}
+                  onClick={() => setPage(1)}
+                  title="First page"
+                >
+                  <ChevronsLeft size={18} className="text-gray-700" />
+                </button>
+                <button
+                  className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  title="Previous page"
+                >
+                  <ChevronLeft size={18} className="text-gray-700" />
+                </button>
+                <button
+                  className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  title="Next page"
+                >
+                  <ChevronRight size={18} className="text-gray-700" />
+                </button>
+                <button
+                  className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(totalPages)}
+                  title="Last page"
+                >
+                  <ChevronsRight size={18} className="text-gray-700" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Email Template Modal */}
       {showEmailModal && selectedInvoice && (
@@ -510,6 +754,18 @@ export default function Invoices() {
           invoice={selectedPaymentInvoice}
           onClose={closePaymentModal}
           onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+
+
+      {/* Finalize Invoice Modal */}
+      {showFinalizeModal && selectedFinalizeInvoice && (
+        <FinalizeInvoiceModal
+          isOpen={showFinalizeModal}
+          invoiceNo={selectedFinalizeInvoice.invoiceNo}
+          onClose={closeFinalizeModal}
+          onConfirm={handleFinalize}
         />
       )}
     </div>

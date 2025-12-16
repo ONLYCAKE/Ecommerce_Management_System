@@ -1,5 +1,10 @@
 import { useMemo } from 'react'
 
+// Consistent rounding to 2 decimal places
+function roundToTwoDecimals(value: number): number {
+    return Math.round(value * 100) / 100
+}
+
 export interface InvoiceItem {
     id?: string
     productId?: number
@@ -51,13 +56,13 @@ export function useInvoiceTotals(
         const { buyerState = '', globalDiscountPct = 0 } = meta
         const sellerState = meta.sellerState || SELLER_STATE
 
-        // Calculate per-line totals
+        // Calculate per-line totals with consistent rounding
         const perLineTotals: LineTotal[] = items.map((item) => {
-            const lineSubtotal = item.qty * item.unitPrice
-            const lineDiscount = lineSubtotal * (item.discount / 100)
-            const lineTaxable = lineSubtotal - lineDiscount
-            const lineTax = lineTaxable * (item.taxRate / 100)
-            const lineTotal = lineTaxable + lineTax
+            const lineSubtotal = roundToTwoDecimals(item.qty * item.unitPrice)
+            const lineDiscount = roundToTwoDecimals(lineSubtotal * (item.discount / 100))
+            const lineTaxable = roundToTwoDecimals(lineSubtotal - lineDiscount)
+            const lineTax = roundToTwoDecimals(lineTaxable * (item.taxRate / 100))
+            const lineTotal = roundToTwoDecimals(lineTaxable + lineTax)
 
             return {
                 id: item.id,
@@ -69,16 +74,16 @@ export function useInvoiceTotals(
             }
         })
 
-        // Sum up all lines
-        const subtotal = perLineTotals.reduce((sum, line) => sum + line.lineSubtotal, 0)
-        const itemDiscount = perLineTotals.reduce((sum, line) => sum + line.lineDiscount, 0)
+        // Sum up all lines with rounding
+        const subtotal = roundToTwoDecimals(perLineTotals.reduce((sum, line) => sum + line.lineSubtotal, 0))
+        const itemDiscount = roundToTwoDecimals(perLineTotals.reduce((sum, line) => sum + line.lineDiscount, 0))
 
         // Apply global discount
-        const subtotalAfterItemDiscount = subtotal - itemDiscount
-        const globalDiscount = subtotalAfterItemDiscount * (globalDiscountPct / 100)
-        const taxableAmount = subtotalAfterItemDiscount - globalDiscount
+        const subtotalAfterItemDiscount = roundToTwoDecimals(subtotal - itemDiscount)
+        const globalDiscount = roundToTwoDecimals(subtotalAfterItemDiscount * (globalDiscountPct / 100))
+        const taxableAmount = roundToTwoDecimals(subtotalAfterItemDiscount - globalDiscount)
 
-        const totalDiscount = itemDiscount + globalDiscount
+        const totalDiscount = roundToTwoDecimals(itemDiscount + globalDiscount)
 
         // Calculate tax based on state
         const isSameState = buyerState.toLowerCase() === sellerState.toLowerCase()
@@ -92,24 +97,26 @@ export function useInvoiceTotals(
             // Same state: CGST + SGST
             perLineTotals.forEach((line, idx) => {
                 const item = items[idx]
-                const taxAmount = line.lineTaxable * (item.taxRate / 100)
-                cgst += taxAmount / 2
-                sgst += taxAmount / 2
+                const taxAmount = roundToTwoDecimals(line.lineTaxable * (item.taxRate / 100))
+                cgst += roundToTwoDecimals(taxAmount / 2)
+                sgst += roundToTwoDecimals(taxAmount / 2)
             })
-            totalTax = cgst + sgst
+            cgst = roundToTwoDecimals(cgst)
+            sgst = roundToTwoDecimals(sgst)
+            totalTax = roundToTwoDecimals(cgst + sgst)
         } else {
             // Different state: IGST
             perLineTotals.forEach((line, idx) => {
                 const item = items[idx]
-                igst += line.lineTaxable * (item.taxRate / 100)
+                igst += roundToTwoDecimals(line.lineTaxable * (item.taxRate / 100))
             })
+            igst = roundToTwoDecimals(igst)
             totalTax = igst
         }
 
-        // Calculate grand total
-        const beforeRound = taxableAmount + totalTax
-        const roundOff = Math.round(beforeRound) - beforeRound
-        const grandTotal = Math.round(beforeRound)
+        // Calculate grand total - round to 2 decimals (NOT whole number)
+        const grandTotal = roundToTwoDecimals(taxableAmount + totalTax)
+        const roundOff = 0 // No round-off when using 2 decimal precision
 
         return {
             subtotal,
@@ -125,3 +132,4 @@ export function useInvoiceTotals(
         }
     }, [items, meta])
 }
+

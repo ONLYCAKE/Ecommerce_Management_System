@@ -4,19 +4,23 @@ import {
     createPayment,
     updatePayment,
     deletePayment,
-    getPaymentsByInvoice
+    getPaymentsByInvoice,
+    getAllPaymentRecords
 } from '../controllers/paymentController';
 import { PERMISSIONS } from '../constants/permissions';
 
 const router = Router();
 router.use(authenticate);
 
+// Get all payment records (for Payment Records tab)
+router.get('/records', requirePermission(PERMISSIONS.INVOICE_READ), getAllPaymentRecords);
+
+// Get payments for a specific invoice
+router.get('/invoice/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_READ), getPaymentsByInvoice);
+
 // Payment CRUD operations
 router.post('/', requirePermission(PERMISSIONS.INVOICE_UPDATE), createPayment);
 router.put('/:id', requirePermission(PERMISSIONS.INVOICE_UPDATE), updatePayment);
 router.delete('/:id', requirePermission(PERMISSIONS.INVOICE_UPDATE), deletePayment);
-
-// Get payments for a specific invoice
-router.get('/invoice/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_READ), getPaymentsByInvoice);
 
 export default router;

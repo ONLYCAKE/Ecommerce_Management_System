@@ -55,7 +55,7 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
     })
     const [error, setError] = useState('')
 
-    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
+    const totalPaid = roundToTwoDecimals(payments.reduce((sum, p) => sum + p.amount, 0))
     const balance = roundToTwoDecimals(grandTotal - totalPaid)
 
     // Calculate round-off preview for current input
@@ -65,8 +65,8 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
     }, [newPayment.amount, balance])
 
     const openPaymentForm = () => {
-        // Auto-fill with remaining balance rounded up to nearest integer
-        const suggestedAmount = balance > 0 ? Math.ceil(balance) : 0
+        // Auto-fill with exact remaining balance (2 decimal precision)
+        const suggestedAmount = balance > 0 ? roundToTwoDecimals(balance) : 0
         setNewPayment({
             amount: suggestedAmount,
             mode: 'Cash',
@@ -94,7 +94,6 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
             ...newPayment,
             id: Date.now().toString(),
             amount: adjustedAmount,
-            roundOff: roundOff
         }])
         setNewPayment({ amount: 0, mode: 'Cash', note: '' })
         setError('')
@@ -108,15 +107,15 @@ export default function PaymentPanel({ payments, onChange, grandTotal }: Payment
     const markFullyPaid = () => {
         if (balance <= 0) return
 
-        const suggestedAmount = Math.ceil(balance)
-        const { adjustedAmount, roundOff } = calculateRoundOff(suggestedAmount, balance)
+        // Use exact balance amount (2 decimal precision)
+        const exactAmount = roundToTwoDecimals(balance)
 
         onChange([...payments, {
             id: Date.now().toString(),
-            amount: adjustedAmount,
-            roundOff: roundOff,
+            amount: exactAmount,
+            roundOff: 0,
             mode: 'Cash',
-            note: roundOff > 0 ? `Full payment (Round-off: ₹${roundOff.toFixed(2)})` : 'Full payment'
+            note: 'Full payment'
         }])
     }
 

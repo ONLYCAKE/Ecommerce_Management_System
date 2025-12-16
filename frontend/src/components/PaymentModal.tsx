@@ -52,7 +52,7 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
 
     // Calculate round-off preview
     const roundOffPreview = useMemo(() => {
-        const amountNum = parseInt(amount);
+        const amountNum = parseFloat(amount);
         if (!amount || isNaN(amountNum) || amountNum <= 0) return null;
         return calculateRoundOff(amountNum, remainingBalance);
     }, [amount, remainingBalance]);
@@ -60,10 +60,10 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
 
-        const amountNum = parseInt(amount);
+        const amountNum = roundToTwoDecimals(parseFloat(amount));
 
         // Validation
-        if (!amount || amountNum <= 0) {
+        if (!amount || isNaN(amountNum) || amountNum <= 0) {
             toast.error('Please enter a valid amount');
             return;
         }
@@ -80,7 +80,7 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
             setLoading(true);
             await api.post('/payments', {
                 invoiceNo: invoice.invoiceNo,
-                amount: amountNum, // Send the integer amount, backend will handle round-off
+                amount: amountNum, // Send the decimal amount
                 method,
                 reference: reference || undefined
             });
@@ -148,20 +148,20 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
 
                     <div className="mb-4">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Amount (Whole Number) <span className="text-red-500">*</span>
+                            Amount <span className="text-red-500">*</span>
                         </label>
                         <input
                             type="number"
-                            step="1"
-                            min="1"
+                            step="0.01"
+                            min="0.01"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Enter whole number amount"
+                            placeholder="Enter amount"
                             required
                         />
                         <div className="text-xs text-gray-500 mt-1">
-                            Enter integer amounts only (e.g., 1000, 1500)
+                            Enter payment amount (e.g., 100.50, 0.20)
                         </div>
                     </div>
 

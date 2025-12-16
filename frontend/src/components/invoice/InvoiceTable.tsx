@@ -42,7 +42,7 @@ export default function InvoiceTable({ items, onChange, perLineTotals = [] }: In
                         <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 w-20">Qty</th>
                         <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-28">Unit Price</th>
                         <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-24">Discount %</th>
-                        <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-24">Tax %</th>
+                        <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-32">Tax %</th>
                         <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 w-32">Total</th>
                         <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 w-20">Actions</th>
                     </tr>
@@ -128,8 +128,8 @@ export default function InvoiceTable({ items, onChange, perLineTotals = [] }: In
                                     </td>
                                     <td className="px-2 py-2">
                                         <select
-                                            className="input w-full text-sm"
-                                            value={item.taxRate}
+                                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            value={item.taxRate || 0}
                                             onChange={(e) => updateItem(index, 'taxRate', parseFloat(e.target.value))}
                                         >
                                             <option value="0">GST 0%</option>

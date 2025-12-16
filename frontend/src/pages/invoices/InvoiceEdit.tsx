@@ -26,11 +26,12 @@ interface Customer {
 interface Product {
     id: number
     title: string
-    sku: string
-    price: number
-    gst: number
     description?: string
-    uom?: string
+    price: number
+    stock: number
+    hsnCode?: string
+    taxType?: 'withTax' | 'withoutTax'
+    taxRate?: number
 }
 
 interface Payment {
@@ -130,15 +131,16 @@ export default function InvoiceEdit() {
 
     const handleAddProduct = (product: Product, qty: number) => {
         const newItem: InvoiceItem = {
-            id: Math.random().toString(),
+            id: Date.now().toString(),
             productId: product.id,
             title: product.title,
-            description: product.description || '',
             qty,
             unitPrice: product.price,
+            // AUTO-APPLY product's tax configuration
+            taxRate: product.taxType === 'withTax' ? (product.taxRate !== undefined ? product.taxRate : 18) : 0,
             discount: 0,
-            taxRate: product.gst || 18,
-            uom: product.uom || ''
+            uom: 'Pcs',
+            hsnCode: product.hsnCode || ''
         }
         setItems([...items, newItem])
     }

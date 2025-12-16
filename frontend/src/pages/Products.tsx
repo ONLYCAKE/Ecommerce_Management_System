@@ -6,8 +6,8 @@ import { useConfirm } from '../context/ConfirmContext'
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
 
 interface Supplier { id: number; name: string }
-interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string }
-interface ProductForm { sku: string; title: string; category: string; description: string; price: number | string; stock: number | string; supplierId: number | string; hsnCode: string }
+interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string; taxType?: string; taxRate?: number }
+interface ProductForm { sku: string; title: string; category: string; description: string; price: number | string; stock: number | string; supplierId: number | string; hsnCode: string; taxType: string; taxRate: number }
 
 export default function Products() {
   const [items, setItems] = useState<Product[]>([])
@@ -82,7 +82,7 @@ export default function Products() {
     setErrors({})
     if (item) {
       // Editing existing product
-      setForm({ sku: item.sku || '', title: item.title, category: item.category || '', description: item.description || '', price: item.price, stock: item.stock, supplierId: item.supplierId || '', hsnCode: item.hsnCode || '' })
+      setForm({ sku: item.sku || '', title: item.title, category: item.category || '', description: item.description || '', price: item.price, stock: item.stock, supplierId: item.supplierId || '', hsnCode: item.hsnCode || '', taxType: item.taxType || 'withTax', taxRate: item.taxRate !== undefined ? item.taxRate : 18 })
     } else {
       // Adding new product - auto-generate SKU
       const generateNextSKU = () => {
@@ -102,7 +102,7 @@ export default function Products() {
         return `SKU-${maxSKU + 1}`
       }
 
-      setForm({ sku: generateNextSKU(), title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '' })
+      setForm({ sku: generateNextSKU(), title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '', taxType: 'withTax', taxRate: 18 })
     }
     setShowForm(true)
   }
@@ -110,7 +110,7 @@ export default function Products() {
   const save = async (e: FormEvent) => {
     e.preventDefault()
     if (!validate()) return
-    const payload = { ...form, price: Number(form.price), stock: Number(form.stock), supplierId: Number(form.supplierId) }
+    const payload = { ...form, price: Number(form.price), stock: Number(form.stock), supplierId: Number(form.supplierId), taxRate: Number(form.taxRate) }
     if (editing) await api.put(`/products/${editing.id}`, payload)
     else await api.post('/products', payload)
     setShowForm(false)
@@ -351,6 +351,46 @@ export default function Products() {
                   </p>
                 )}
               </div>
+
+              {/* Tax Configuration */}
+              <div className="border-t pt-4 mt-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Tax Configuration</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Tax Type *</label>
+                    <select
+                      className="input mt-1 w-full"
+                      value={form.taxType}
+                      onChange={(e) => setForm(f => ({
+                        ...f,
+                        taxType: e.target.value,
+                        taxRate: e.target.value === 'withoutTax' ? 0 : 18
+                      }))}
+                    >
+                      <option value="withTax">With Tax</option>
+                      <option value="withoutTax">Without Tax</option>
+                    </select>
+                  </div>
+
+                  {form.taxType === 'withTax' && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Tax Rate (%) *</label>
+                      <select
+                        className="input mt-1 w-full"
+                        value={form.taxRate}
+                        onChange={(e) => setForm(f => ({ ...f, taxRate: parseFloat(e.target.value) }))}
+                      >
+                        <option value={0}>0% - Exempted</option>
+                        <option value={5}>5% - Reduced Rate</option>
+                        <option value={12}>12% - Standard-1</option>
+                        <option value={18}>18% - Standard-2 (GST)</option>
+                        <option value={28}>28% - Luxury/Sin Goods</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 mt-6">
                 <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
                 <button className="btn-primary">Save</button>

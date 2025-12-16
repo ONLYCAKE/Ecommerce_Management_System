@@ -31,6 +31,8 @@ interface Product {
     price: number
     stock: number
     hsnCode?: string
+    taxType?: 'withTax' | 'withoutTax'
+    taxRate?: number
 }
 
 const SELLER_STATE = 'Gujarat'
@@ -84,7 +86,8 @@ export default function InvoiceCreate() {
             title: product.title,
             qty,
             unitPrice: product.price,
-            taxRate: 18, // Default GST rate
+            // AUTO-APPLY product's tax configuration
+            taxRate: product.taxType === 'withTax' ? (product.taxRate !== undefined ? product.taxRate : 18) : 0,
             discount: 0,
             uom: 'Pcs',
             hsnCode: product.hsnCode || ''
@@ -147,8 +150,17 @@ export default function InvoiceCreate() {
                     hsnCode: item.hsnCode
                 })),
                 notes,
+                // NEW: Send payments array (payment-centric architecture)
+                payments: payments.map(p => ({
+                    amount: p.amount,
+                    roundOff: p.roundOff || 0,
+                    mode: p.mode,
+                    note: p.note || ''
+                })),
+                // DEPRECATED: Kept for backward compatibility
                 paymentMethod: payments.length > 0 ? payments[0].mode : 'Cash',
-                serviceCharge: 0
+                serviceCharge: 0,
+                signature: signature || null  // Add signature to payload
             }
 
             console.log('📤 Sending payload:', payload)
@@ -342,27 +354,27 @@ export default function InvoiceCreate() {
                             <button
                                 type="button"
                                 className="btn-secondary w-full"
-                                onClick={() => handleSave('Draft')}
+                                onClick={() => navigate('/invoices')}
                                 disabled={loading}
                             >
-                                Save as Draft
+                                Cancel
                             </button>
-                            <button
-                                type="button"
-                                className="btn-secondary w-full"
-                                onClick={() => handleSave('Processing', true)}
-                                disabled={loading}
-                            >
-                                Save & Print
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-primary w-full"
-                                onClick={() => handleSave('Processing')}
-                                disabled={loading}
-                            >
-                                {loading ? 'Saving...' : 'Save Invoice →'}
-                            </button>
+                            <div className="flex gap-3 w-full">
+                                <button
+                                    onClick={() => handleSave('Draft', false)}
+                                    disabled={loading}
+                                    className="flex-1 px-6 py-3 border border-gray-300 bg-white text-gray-700 font-semibold rounded-lg hover:bg-gray-50 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? 'Saving...' : 'Save as Draft'}
+                                </button>
+                                <button
+                                    onClick={() => handleSave('Processing', false)}
+                                    disabled={loading}
+                                    className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 shadow-md  hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loading ? 'Saving...' : 'Save Invoice'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

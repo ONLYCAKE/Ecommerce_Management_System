@@ -16,7 +16,9 @@ export default function ProductEdit() {
         category: '',
         price: 0,
         stock: 0,
-        supplierId: null as number | null
+        supplierId: null as number | null,
+        taxType: 'withTax' as 'withTax' | 'withoutTax',
+        taxRate: 18
     })
     const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -36,7 +38,9 @@ export default function ProductEdit() {
                     category: product.category || '',
                     price: product.price || 0,
                     stock: product.stock || 0,
-                    supplierId: product.supplierId
+                    supplierId: product.supplierId,
+                    taxType: product.taxType || 'withTax',
+                    taxRate: product.taxRate !== undefined ? product.taxRate : 18
                 })
                 setLoading(false)
             } catch (err) {
@@ -115,6 +119,46 @@ export default function ProductEdit() {
                         <option value="">Select Supplier</option>
                         {suppliers.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
                     </select>
+                </div>
+
+                {/* Tax Configuration */}
+                <div className="border-t pt-4 mt-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Tax Configuration</h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-sm font-medium text-gray-700">Tax Type *</label>
+                            <select
+                                className="input w-full mt-1"
+                                value={form.taxType}
+                                onChange={(e) => setForm({
+                                    ...form,
+                                    taxType: e.target.value as 'withTax' | 'withoutTax',
+                                    taxRate: e.target.value === 'withoutTax' ? 0 : 18
+                                })}
+                            >
+                                <option value="withTax">With Tax</option>
+                                <option value="withoutTax">Without Tax</option>
+                            </select>
+                        </div>
+
+                        {form.taxType === 'withTax' && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">Tax Rate (%) *</label>
+                                <select
+                                    className="input w-full mt-1"
+                                    value={form.taxRate}
+                                    onChange={(e) => setForm({ ...form, taxRate: parseFloat(e.target.value) })}
+                                >
+                                    <option value={0}>0% - Exempted</option>
+                                    <option value={5}>5% - Reduced Rate</option>
+                                    <option value={12}>12% - Standard-1</option>
+                                    <option value={18}>18% - Standard-2 (GST)</option>
+                                    <option value={28}>28% - Luxury/Sin Goods</option>
+                                </select>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
