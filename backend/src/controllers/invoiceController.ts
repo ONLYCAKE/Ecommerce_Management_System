@@ -277,6 +277,8 @@ export const createInvoice = async (req: Request, res: Response) => {
         balance: total,  // Initial balance, will be recalculated by service
         serviceCharge: Number(serviceCharge || 0),
         signature: body.signature || null,
+        notes: body.notes || null,  // Store invoice notes/comments
+        extraCharges: body.extraCharges || null,  // Store extra charges array
         items: { create: normalized as any },
       };
 
@@ -743,14 +745,52 @@ export const generateInvoicePdf = async (req: Request, res: Response) => {
     doc.text(money(cgst), totalsStartX + totalsLabelWidth + 5, y + 5, { width: totalsValueWidth, align: 'right' });
     y += totalsRowHeight;
 
+    // ========== EXTRA CHARGES (in totals section, before grand total) ==========
+    const grandTotalBoxWidth = totalsLabelWidth + totalsValueWidth + 15;  // Define early for use in extra charges section
+    const extraCharges = (inv as any).extraCharges as any[] || [];
+    let extraChargesTotal = 0;
+
+    if (extraCharges.length > 0) {
+      // Separator line
+      doc.strokeColor(COLORS.border).lineWidth(0.5);
+      doc.moveTo(totalsStartX - 5, y).lineTo(totalsStartX + grandTotalBoxWidth - 10, y).stroke();
+      y += 8;
+
+      // Extra charges header
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#92400e');
+      doc.text('Additional Charges:', totalsStartX, y + 5, { width: totalsLabelWidth, align: 'right' });
+      y += totalsRowHeight - 4;
+
+      // Individual charges
+      doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
+      extraCharges.forEach((charge: any) => {
+        if (charge.name && charge.amount) {
+          doc.text(`  ${charge.name}:`, totalsStartX, y + 5, { width: totalsLabelWidth, align: 'right' });
+          doc.font('Helvetica-Bold');
+          doc.text(money(charge.amount), totalsStartX + totalsLabelWidth + 5, y + 5, { width: totalsValueWidth, align: 'right' });
+          doc.font('Helvetica');
+          extraChargesTotal += Number(charge.amount);
+          y += totalsRowHeight - 4;
+        }
+      });
+
+      // Total extra charges
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#92400e');
+      doc.text('Total Additional:', totalsStartX, y + 5, { width: totalsLabelWidth, align: 'right' });
+      doc.text(money(extraChargesTotal), totalsStartX + totalsLabelWidth + 5, y + 5, { width: totalsValueWidth, align: 'right' });
+      y += totalsRowHeight;
+    }
+
+    // Calculate final grand total including extra charges
+    const finalGrandTotal = grandTotal + extraChargesTotal;
+
     // Grand Total row (prominent with background)
-    const grandTotalBoxWidth = totalsLabelWidth + totalsValueWidth + 15;
     doc.rect(totalsStartX - 5, y, grandTotalBoxWidth, 24).fill('#e8f4fd');
     doc.strokeColor(COLORS.border).rect(totalsStartX - 5, y, grandTotalBoxWidth, 24).stroke();
     doc.fillColor(COLORS.primary).font('Helvetica-Bold').fontSize(10);
     doc.text('Grand Total:', totalsStartX, y + 6, { width: totalsLabelWidth, align: 'right' });
     doc.fontSize(11);
-    doc.text(money(grandTotal), totalsStartX + totalsLabelWidth + 5, y + 5, { width: totalsValueWidth, align: 'right' });
+    doc.text(money(finalGrandTotal), totalsStartX + totalsLabelWidth + 5, y + 5, { width: totalsValueWidth, align: 'right' });
     y += 28;
 
     // Amount Payable (if balance differs from total)
@@ -794,6 +834,31 @@ export const generateInvoicePdf = async (req: Request, res: Response) => {
       });
 
       y += 10;
+    }
+
+    // ========== NOTES / COMMENTS (if any) ==========
+    const notes = (inv as any).notes;
+    if (notes && notes.trim()) {
+      // Check for page break
+      if (y > PAGE_HEIGHT - 150) {
+        doc.addPage();
+        y = MARGIN;
+      }
+
+      // Section header
+      doc.rect(MARGIN, y, CONTENT_WIDTH, 22).fill('#dbeafe'); // Blue background
+      doc.strokeColor(COLORS.border).rect(MARGIN, y, CONTENT_WIDTH, 22).stroke();
+      doc.fillColor('#1e40af').font('Helvetica-Bold').fontSize(10);
+      doc.text('Notes / Comments', MARGIN + 10, y + 6);
+      y += 22;
+
+      // Notes content
+      doc.font('Helvetica').fontSize(9).fillColor(COLORS.text);
+      doc.text(notes.trim(), MARGIN + 10, y + 5, {
+        width: CONTENT_WIDTH - 20,
+        lineGap: 3
+      });
+      y += Math.ceil(notes.length / 80) * 14 + 20;
     }
 
     // ========== TERMS AND CONDITIONS ==========

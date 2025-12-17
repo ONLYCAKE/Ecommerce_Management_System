@@ -64,7 +64,7 @@ async function main() {
           name: `Supplier ${i + 1}`,
           email: `supplier${i + 1}@mail.com`,
           phone: `90000${String(i + 1).padStart(5, '0')}`,
-          address: `${i + 1} Market Street`,
+          addressLine1: `${i + 1} Market Street`,
         },
       })
     )
@@ -77,7 +77,7 @@ async function main() {
           name: `Buyer ${i + 1}`,
           email: `buyer${i + 1}@mail.com`,
           phone: `80000${String(i + 1).padStart(5, '0')}`,
-          address: `${i + 1} Industrial Ave`,
+          addressLine1: `${i + 1} Industrial Ave`,
         },
       })
     )
@@ -160,7 +160,7 @@ async function main() {
 main()
   .catch(err => {
     console.error('❌ Seed error:', err)
-    process.exit(1)
+    throw err
   })
   .finally(async () => {
     await prisma.$disconnect()

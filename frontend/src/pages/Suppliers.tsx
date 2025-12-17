@@ -266,24 +266,6 @@ export default function Suppliers() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">Rows per page:</label>
-            <select
-              className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-            >
-              {[3, 5, 10, 20].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {canCreate("supplier") && (
             <button
               className="btn-primary px-5 py-2.5 font-medium shadow-sm hover:shadow-md transition-all flex items-center gap-2"
@@ -406,7 +388,25 @@ export default function Suppliers() {
         {/* Pagination */}
         {filtered.length > 0 && (
           <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">Rows per page:</label>
+                <select
+                  className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                >
+                  {[3, 5, 10, 20].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <span className="text-sm text-gray-600">
                 Page {page} of {totalPages}
               </span>

@@ -108,10 +108,10 @@ model Invoice {
   id              Int               @id @default(autoincrement())
   invoiceNo       String            @unique
   buyerId         Int
-  supplierId      Int
+  supplierId      Int?
   /// @deprecated Use Payment.method instead. This field is kept for backward compatibility only.
   /// Do NOT use in business logic. Individual payments have their own methods.
-  paymentMethod   String
+  paymentMethod   String?
   total           Float
   status          String
   createdAt       DateTime          @default(now())
@@ -122,16 +122,20 @@ model Invoice {
   cancelledAt     DateTime?
   cancelledBy     Int?
   dueDate         DateTime?
+  invoiceDate     DateTime          @default(now())
+  notes           String?           // Invoice notes/comments
+  extraCharges    Json?             // Extra charges [{id, name, amount}]
   cancelLogs      CancelLog[]
   buyer           Buyer             @relation(fields: [buyerId], references: [id])
   cancelledByUser User?             @relation(fields: [cancelledBy], references: [id])
-  supplier        Supplier          @relation(fields: [supplierId], references: [id])
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
   items           InvoiceItem[]
   reminders       InvoiceReminder[]
   payments        Payment[]
 
   @@index([status])
   @@index([dueDate])
+  @@index([invoiceDate])
 }
 
 model InvoiceItem {

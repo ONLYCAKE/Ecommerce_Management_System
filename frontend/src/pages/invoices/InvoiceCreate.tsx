@@ -4,11 +4,13 @@ import api from '../../api/client'
 import { useInvoiceTotals, InvoiceItem } from '../../hooks/useInvoiceTotals'
 import CustomerSelect from '../../components/invoice/CustomerSelect'
 import ProductSearch from '../../components/invoice/ProductSearch'
-import InvoiceTable from '../../components/invoice/InvoiceTable'
+import InvoiceTable, { ColumnVisibility } from '../../components/invoice/InvoiceTable'
 import TotalsPanel from '../../components/invoice/TotalsPanel'
 import PaymentPanel, { Payment } from '../../components/invoice/PaymentPanel'
 import SignaturePanel from '../../components/invoice/SignaturePanel'
 import InvoiceMeta from '../../components/invoice/InvoiceMeta'
+import ExtraChargesPanel, { ExtraCharge } from '../../components/invoice/ExtraChargesPanel'
+import NotesPanel from '../../components/invoice/NotesPanel'
 
 interface Buyer {
     id: number
@@ -37,6 +39,8 @@ interface Product {
 
 const SELLER_STATE = 'Gujarat'
 
+type InvoiceViewMode = 'normal' | 'full' | 'split'
+
 export default function InvoiceCreate() {
     const navigate = useNavigate()
 
@@ -53,8 +57,24 @@ export default function InvoiceCreate() {
     const [payments, setPayments] = useState<Payment[]>([])
     const [signature, setSignature] = useState<string | null>(null)
     const [globalDiscountPct, setGlobalDiscountPct] = useState(0)
+    const [globalDiscountType, setGlobalDiscountType] = useState<'percent' | 'fixed'>('percent')
     const [loading, setLoading] = useState(false)
     const [errors, setErrors] = useState<Record<string, string>>({})
+
+    // Layout / view mode (UI-only)
+    const [viewMode, setViewMode] = useState<InvoiceViewMode>('normal')
+
+    // Column visibility state
+    const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
+        hsn: true, qty: true, unitPrice: true, discount: true, tax: true, total: true
+    })
+
+    // Extra charges state
+    const [extraChargesEnabled, setExtraChargesEnabled] = useState(false)
+    const [extraCharges, setExtraCharges] = useState<ExtraCharge[]>([])
+
+    // Notes state
+    const [notesEnabled, setNotesEnabled] = useState(false)
 
     // Calculate totals
     const totals = useInvoiceTotals(items, {
@@ -95,18 +115,23 @@ export default function InvoiceCreate() {
         setItems([...items, newItem])
     }
 
-    // Validation
-    const validate = () => {
+    // Validation - drafts require minimal data, final saves require all fields
+    const validate = (isDraft: boolean = false) => {
         const errs: Record<string, string> = {}
 
+        // Always require invoice number
         if (!invoiceNo.trim()) errs.invoiceNo = 'Invoice number is required'
-        if (!customer) errs.customer = 'Customer is required'
-        if (items.length === 0) errs.items = 'At least one item is required'
-        if (!invoiceDate) errs.invoiceDate = 'Invoice date is required'
 
-        // Validate due date is not before invoice date
-        if (invoiceDate && dueDate && dueDate < invoiceDate) {
-            errs.dueDate = 'Due date cannot be before invoice date'
+        // For non-draft saves, require all fields
+        if (!isDraft) {
+            if (!customer) errs.customer = 'Customer is required'
+            if (items.length === 0) errs.items = 'At least one item is required'
+            if (!invoiceDate) errs.invoiceDate = 'Invoice date is required'
+
+            // Validate due date is not before invoice date
+            if (invoiceDate && dueDate && dueDate < invoiceDate) {
+                errs.dueDate = 'Due date cannot be before invoice date'
+            }
         }
 
         setErrors(errs)
@@ -117,7 +142,8 @@ export default function InvoiceCreate() {
     const handleSave = async (status: 'Draft' | 'Processing' | 'Completed', print = false) => {
         console.log('💾 Save clicked with status:', status, 'print:', print)
 
-        if (!validate()) {
+        const isDraft = status === 'Draft'
+        if (!validate(isDraft)) {
             console.log('❌ Validation failed:', errors)
             return
         }
@@ -149,7 +175,11 @@ export default function InvoiceCreate() {
                     discountPct: item.discount,
                     hsnCode: item.hsnCode
                 })),
-                notes,
+                notes: notesEnabled ? notes : null,
+                // Extra charges (only if enabled and has charges)
+                extraCharges: extraChargesEnabled && extraCharges.length > 0
+                    ? extraCharges.filter(c => c.name && c.amount > 0)
+                    : null,
                 // NEW: Send payments array (payment-centric architecture)
                 payments: payments.map(p => ({
                     amount: p.amount,
@@ -182,7 +212,13 @@ export default function InvoiceCreate() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div
+            className={
+                `min-h-screen transition-all duration-300 ${
+                    viewMode === 'full' ? 'bg-slate-900/5' : 'bg-gray-50'
+                }`
+            }
+        >
             {/* Header */}
             <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
                 <div className="max-w-7xl mx-auto px-6 py-4">
@@ -202,6 +238,49 @@ export default function InvoiceCreate() {
                         </div>
 
                         <div className="flex items-center gap-3">
+                            {/* View mode toggle */}
+                            <div className="hidden md:flex items-center gap-1 rounded-full bg-gray-100 px-1 py-0.5 shadow-inner">
+                                <button
+                                    type="button"
+                                    onClick={() => setViewMode('normal')}
+                                    className={
+                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                                            viewMode === 'normal'
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'text-gray-700 hover:bg-gray-200'
+                                        }`
+                                    }
+                                >
+                                    Default
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewMode('split')}
+                                    className={
+                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                                            viewMode === 'split'
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'text-gray-700 hover:bg-gray-200'
+                                        }`
+                                    }
+                                >
+                                    Split
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setViewMode('full')}
+                                    className={
+                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                                            viewMode === 'full'
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'text-gray-700 hover:bg-gray-200'
+                                        }`
+                                    }
+                                >
+                                    Focus
+                                </button>
+                            </div>
+
                             <div className="flex items-center gap-2">
                                 <label className="text-sm font-medium text-gray-700">Invoice No:</label>
                                 <input
@@ -242,16 +321,40 @@ export default function InvoiceCreate() {
             </div>
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-6 py-6">
+            <div
+                className={
+                    `mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-6xl transition-all duration-300 ${
+                        viewMode === 'normal'
+                            ? ''
+                            : 'bg-white rounded-2xl shadow-xl border border-gray-100'
+                    }`
+                }
+            >
                 {errors.general && (
                     <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
                         {errors.general}
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div
+                    className={
+                        `grid gap-6 transition-all duration-300 ${
+                            viewMode === 'split'
+                                ? 'grid-cols-1 xl:grid-cols-2'
+                                : 'grid-cols-1 lg:grid-cols-3'
+                        }`
+                    }
+                >
                     {/* Left Column (2/3 width) */}
-                    <div className="lg:col-span-2 space-y-6">
+                    <div
+                        className={
+                            `space-y-6 ${
+                                viewMode === 'split'
+                                    ? ''
+                                    : 'lg:col-span-2'
+                            }`
+                        }
+                    >
                         {/* Customer Selection */}
                         <div className="card p-6">
                             <CustomerSelect
@@ -300,25 +403,31 @@ export default function InvoiceCreate() {
                         <div className="card p-6">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="font-semibold text-gray-800">Items</h3>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-sm text-gray-600">Global Discount %:</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        step="0.1"
-                                        className="input w-20 text-sm"
-                                        value={globalDiscountPct}
-                                        onChange={(e) => setGlobalDiscountPct(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
                             </div>
                             <InvoiceTable
                                 items={items}
                                 onChange={setItems}
                                 perLineTotals={totals.perLineTotals}
+                                columnVisibility={columnVisibility}
+                                onColumnVisibilityChange={setColumnVisibility}
                             />
                             {errors.items && <p className="text-red-600 text-sm mt-2">{errors.items}</p>}
+                        </div>
+
+                        {/* Extra Charges & Notes */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <ExtraChargesPanel
+                                charges={extraCharges}
+                                onChange={setExtraCharges}
+                                enabled={extraChargesEnabled}
+                                onToggle={setExtraChargesEnabled}
+                            />
+                            <NotesPanel
+                                notes={notes}
+                                onChange={setNotes}
+                                enabled={notesEnabled}
+                                onToggle={setNotesEnabled}
+                            />
                         </div>
 
                         {/* Terms & Conditions */}
@@ -337,7 +446,12 @@ export default function InvoiceCreate() {
                     {/* Right Column (1/3 width - Sticky) */}
                     <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
                         {/* Totals Panel */}
-                        <TotalsPanel totals={totals} isSameState={isSameState} />
+                        <TotalsPanel
+                            totals={totals}
+                            isSameState={isSameState}
+                            extraCharges={extraCharges}
+                            extraChargesEnabled={extraChargesEnabled}
+                        />
 
                         {/* Payment Panel */}
                         <PaymentPanel

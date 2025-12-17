@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
+import { emailLimiter } from '../middleware/rateLimit';
 import {
     getAllInvoices,
     getInvoiceByNo,
@@ -36,11 +37,11 @@ router.put('/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_UPDATE), updateI
 
 // status & actions
 router.post('/mark-complete/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_UPDATE), markComplete);
-router.post('/:invoiceNo/send-email', requirePermission(PERMISSIONS.INVOICE_READ), sendInvoiceEmail);
+router.post('/:invoiceNo/send-email', emailLimiter, requirePermission(PERMISSIONS.INVOICE_READ), sendInvoiceEmail);
 
-// Reminder routes
-router.post('/:invoiceNo/send-reminder', requirePermission(PERMISSIONS.INVOICE_READ), sendInvoiceReminder);
-router.post('/bulk/send-reminders', requirePermission(PERMISSIONS.INVOICE_READ), bulkSendReminders);
+// Reminder routes with email rate limiting
+router.post('/:invoiceNo/send-reminder', emailLimiter, requirePermission(PERMISSIONS.INVOICE_READ), sendInvoiceReminder);
+router.post('/bulk/send-reminders', emailLimiter, requirePermission(PERMISSIONS.INVOICE_READ), bulkSendReminders);
 router.get('/:invoiceNo/reminders', requirePermission(PERMISSIONS.INVOICE_READ), getInvoiceReminders);
 
 // Finalize draft invoice route
@@ -50,4 +51,3 @@ router.post('/:invoiceNo/finalize', requirePermission(PERMISSIONS.INVOICE_UPDATE
 router.get('/:invoiceNo', requirePermission(PERMISSIONS.INVOICE_READ), getInvoiceByNo);
 
 export default router;
-

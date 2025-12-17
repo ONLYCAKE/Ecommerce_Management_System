@@ -5,7 +5,13 @@ import { prisma } from "../prisma";
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_jwt_secret_change_me";
+// SECURITY: Fail fast if JWT_SECRET is not set - no fallback allowed in production
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("❌ FATAL: JWT_SECRET environment variable is required");
+  console.error("   Please set JWT_SECRET in your .env file");
+  process.exit(1);
+}
 
 export interface AuthUserPayload {
   id: number;

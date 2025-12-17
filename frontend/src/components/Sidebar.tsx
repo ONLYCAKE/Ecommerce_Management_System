@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { FiGrid, FiUsers, FiUserCheck, FiShield, FiTruck, FiShoppingBag, FiPackage, FiFileText, FiChevronLeft } from 'react-icons/fi'
+import { FiGrid, FiUsers, FiUserCheck, FiShield, FiTruck, FiShoppingBag, FiPackage, FiFileText, FiDollarSign, FiChevronLeft } from 'react-icons/fi'
 import { useAuth } from '../hooks/useAuth.ts'
 import avatarDefault from '../assets/default-avatar.svg'
 
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/buyers', label: 'Buyers', icon: <FiShoppingBag /> },
   { to: '/products', label: 'Products', icon: <FiPackage /> },
   { to: '/invoices', label: 'Invoices', icon: <FiFileText /> },
+  { to: '/payments', label: 'Payment Records', icon: <FiDollarSign /> },
   { to: '/orders', label: 'Orders', icon: <FiFileText /> },
 ]
 

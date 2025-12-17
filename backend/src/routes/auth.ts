@@ -4,14 +4,17 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import { prisma } from '../prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { loginLimiter } from '../middleware/rateLimit';
 
 dotenv.config();
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_jwt_secret_change_me';
+
+// SECURITY: JWT_SECRET is validated at startup in auth.ts middleware
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 const router = Router();
 
 /* ------------------------------- LOGIN ------------------------------- */
-router.post('/login', async (req: AuthRequest, res: Response) => {
+router.post('/login', loginLimiter, async (req: AuthRequest, res: Response) => {
   const { email, password } = req.body;
 
   if (!email || !password)

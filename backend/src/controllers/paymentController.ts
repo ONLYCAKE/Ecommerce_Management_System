@@ -79,6 +79,8 @@ export const createPayment = async (req: Request, res: Response) => {
             invoiceNo: invoice.invoiceNo
         })
 
+        // Status was already recalculated inside the transaction
+        // Emit the updated status to clients
         await recalculateAndUpdateInvoiceStatus(invoice.id)
 
         res.status(201).json(payment)
@@ -245,7 +247,8 @@ export const getAllPaymentRecords = async (_req: Request, res: Response) => {
 
         const result = payments.map(p => ({
             id: p.id,
-            invoiceNo: p.invoice.invoiceNo,
+            invoiceId: p.invoiceId,      // For internal relations/navigation
+            invoiceNo: p.invoice.invoiceNo, // For display purposes
             paymentDate: p.receivedAt,
             paidAmount: p.amount,
             remainingBalance: p.invoice.balance,

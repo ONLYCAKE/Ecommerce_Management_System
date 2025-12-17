@@ -20,7 +20,7 @@ export default function Products() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [archived, setArchived] = useState(false)
-  const [form, setForm] = useState<ProductForm>({ sku: '', title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '' })
+  const [form, setForm] = useState<ProductForm>({ sku: '', title: '', category: '', description: '', price: 0, stock: 0, supplierId: '', hsnCode: '', taxType: 'withTax', taxRate: 18 })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const { user } = useAuth()
   const perms = user?.permissions || []
@@ -162,17 +162,6 @@ export default function Products() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">Rows per page:</label>
-            <select
-              className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              value={pageSize}
-              onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
-            >
-              {[3, 5, 10, 20].map(n => (<option key={n} value={n}>{n}</option>))}
-            </select>
-          </div>
-
           {canCreate && (
             <button
               className="btn-primary px-5 py-2.5 font-medium shadow-sm hover:shadow-md transition-all flex items-center gap-2"
@@ -251,12 +240,25 @@ export default function Products() {
 
         {filteredAndSorted.length > 0 && (
           <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(1)}><ChevronsLeft size={18} className="text-gray-700" /></button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}><ChevronLeft size={18} className="text-gray-700" /></button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}><ChevronRight size={18} className="text-gray-700" /></button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(totalPages)}><ChevronsRight size={18} className="text-gray-700" /></button>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">Rows per page:</label>
+                <select
+                  className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  value={pageSize}
+                  onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                >
+                  {[3, 5, 10, 20].map(n => (<option key={n} value={n}>{n}</option>))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(1)}><ChevronsLeft size={18} className="text-gray-700" /></button>
+                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}><ChevronLeft size={18} className="text-gray-700" /></button>
+                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}><ChevronRight size={18} className="text-gray-700" /></button>
+                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(totalPages)}><ChevronsRight size={18} className="text-gray-700" /></button>
+              </div>
             </div>
           </div>
         )}

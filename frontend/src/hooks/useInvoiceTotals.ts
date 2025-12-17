@@ -14,6 +14,7 @@ export interface InvoiceItem {
     unitPrice: number
     taxRate: number
     discount: number
+    discountType?: 'percent' | 'fixed'  // NEW: Discount type - percentage or fixed amount
     uom?: string
     hsnCode?: string
 }

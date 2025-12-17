@@ -26,6 +26,7 @@ import ProductCreate from './pages/products/ProductCreate.tsx'
 import ProductEdit from './pages/products/ProductEdit.tsx'
 import InvoiceCreate from './pages/invoices/InvoiceCreate.tsx'
 import InvoiceEdit from './pages/invoices/InvoiceEdit.tsx'
+import PaymentRecords from './pages/PaymentRecords.tsx'
 
 function Shell() {
   const { user } = useAuth()
@@ -53,6 +54,7 @@ function Shell() {
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/invoices/new" element={<InvoiceCreate />} />
             <Route path="/invoices/:invoiceNo/edit" element={<InvoiceEdit />} />
+            <Route path="/payments" element={<PaymentRecords />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/profile" element={<UserProfile />} />
             <Route path="*" element={<Navigate to="/" />} />

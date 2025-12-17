@@ -15,9 +15,9 @@ export interface InvoiceStatusResult {
  * All payment operations (create/update/delete) MUST call this service.
  * 
  * Status Rules:
- * - Draft: Manually set for incomplete invoices, never recalculated
+ * - Draft: Manually set for incomplete invoices, PRESERVED until finalized
  * - Cancelled: Manually set, never recalculated
- * - Unpaid: receivedAmount === 0
+ * - Unpaid: receivedAmount === 0 (non-draft invoices only)
  * - Partial: 0 < receivedAmount < total (with 0.01 tolerance)
  * - Paid: receivedAmount >= total
  * 
@@ -41,22 +41,36 @@ export async function recalculateAndUpdateInvoiceStatus(
         throw new Error(`Invoice ${invoiceId} not found`);
     }
 
-    // Respect Draft status - don't recalculate
-    if (invoice.status === 'Draft') {
-        return {
-            status: 'Draft',
-            balance: invoice.balance,
-            receivedAmount: 0
-        };
-    }
-
     // Calculate from payments (SINGLE SOURCE OF TRUTH)
     const receivedAmount = roundToTwoDecimals(
         invoice.payments.reduce((sum: number, p: any) => sum + p.amount, 0)
     );
     const balance = roundToTwoDecimals(invoice.total - receivedAmount);
 
-    // Determine status based on payments
+    // Preserve Draft status - NEVER auto-transition, user must finalize
+    if (invoice.status === 'Draft') {
+        // Update balance but keep Draft status
+        await db.invoice.update({
+            where: { id: invoiceId },
+            data: { balance }
+        });
+        return {
+            status: 'Draft',
+            balance,
+            receivedAmount
+        };
+    }
+
+    // Preserve Cancelled status - never recalculate
+    if (invoice.status === 'Cancelled') {
+        return {
+            status: 'Cancelled',
+            balance: invoice.balance,
+            receivedAmount
+        };
+    }
+
+    // Determine status based on payments (for non-Draft, non-Cancelled invoices)
     let status: 'Unpaid' | 'Partial' | 'Paid' = 'Unpaid';
     let finalBalance = balance;
 
