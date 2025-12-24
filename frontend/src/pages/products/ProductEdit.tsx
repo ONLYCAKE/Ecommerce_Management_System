@@ -29,7 +29,8 @@ export default function ProductEdit() {
                     api.get('/suppliers'),
                     api.get(`/products/${id}`)
                 ])
-                setSuppliers(suppliersRes.data)
+                const suppliersList = Array.isArray(suppliersRes.data) ? suppliersRes.data : (suppliersRes.data?.items || [])
+                setSuppliers(suppliersList)
                 const product = productRes.data
                 setForm({
                     sku: product.sku || '',
@@ -45,6 +46,7 @@ export default function ProductEdit() {
                 setLoading(false)
             } catch (err) {
                 console.error('Error loading data', err)
+                setSuppliers([])
                 setLoading(false)
             }
         }

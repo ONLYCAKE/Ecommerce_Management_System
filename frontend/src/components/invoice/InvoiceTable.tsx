@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { InvoiceItem } from '../../hooks/useInvoiceTotals'
-import { ChevronDown, Eye, EyeOff } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff, ChevronUp, ChevronDown as ChevronDownIcon, Trash2 } from 'lucide-react'
 
 // Column visibility configuration
 export interface ColumnVisibility {
@@ -182,22 +182,24 @@ export default function InvoiceTable({
                                             <div className="flex flex-col gap-1">
                                                 <button
                                                     type="button"
-                                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-30 text-xs"
+                                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
                                                     onClick={() => moveItem(index, index - 1)}
                                                     disabled={index === 0}
                                                     title="Move up"
+                                                    aria-label="Move item up"
                                                 >
-                                                    ▲
+                                                    <ChevronUp size={14} strokeWidth={1.8} />
                                                 </button>
                                                 <span className="text-sm text-gray-600 font-medium">{index + 1}</span>
                                                 <button
                                                     type="button"
-                                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-30 text-xs"
+                                                    className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
                                                     onClick={() => moveItem(index, index + 1)}
                                                     disabled={index === items.length - 1}
                                                     title="Move down"
+                                                    aria-label="Move item down"
                                                 >
-                                                    ▼
+                                                    <ChevronDownIcon size={14} strokeWidth={1.8} />
                                                 </button>
                                             </div>
                                         </td>
@@ -294,10 +296,9 @@ export default function InvoiceTable({
                                                 className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
                                                 onClick={() => deleteItem(index)}
                                                 title="Delete item"
+                                                aria-label="Delete item"
                                             >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
+                                                <Trash2 size={16} strokeWidth={1.8} />
                                             </button>
                                         </td>
                                     </tr>

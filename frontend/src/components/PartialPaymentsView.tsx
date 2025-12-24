@@ -41,40 +41,16 @@ export default function PaymentRecordsView() {
     useEffect(() => {
         loadPaymentRecords()
 
-        // Setup Socket.IO for real-time updates
-        const socketUrl = (import.meta as any).env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
-        const newSocket = io(socketUrl)
-
-        newSocket.on('connected', () => {
-            console.log('✅ PaymentRecordsView connected to real-time server')
-        })
-
-        // Reload when payment events occur
-        newSocket.on('payment.created', () => {
-            console.log('🔄 Payment created - refreshing payment records')
-            loadPaymentRecords()
-        })
-
-        newSocket.on('payment.updated', () => {
-            console.log('🔄 Payment updated - refreshing payment records')
-            loadPaymentRecords()
-        })
-
-        newSocket.on('payment.deleted', () => {
-            console.log('🔄 Payment deleted - refreshing payment records')
-            loadPaymentRecords()
-        })
-
-        newSocket.on('invoice.updated', () => {
-            console.log('🔄 Invoice updated - refreshing payment records')
-            loadPaymentRecords()
-        })
-
-        setSocket(newSocket)
-
-        return () => {
-            newSocket.disconnect()
-        }
+        // Socket.IO DISABLED - not implemented in NestJS backend
+        // const socketUrl = (import.meta as any).env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000'
+        // const newSocket = io(socketUrl)
+        // newSocket.on('connected', () => { console.log('✅ PaymentRecordsView connected to real-time server') })
+        // newSocket.on('payment.created', () => { console.log('🔄 Payment created - refreshing payment records'); loadPaymentRecords() })
+        // newSocket.on('payment.updated', () => { console.log('🔄 Payment updated - refreshing payment records'); loadPaymentRecords() })
+        // newSocket.on('payment.deleted', () => { console.log('🔄 Payment deleted - refreshing payment records'); loadPaymentRecords() })
+        // newSocket.on('invoice.updated', () => { console.log('🔄 Invoice updated - refreshing payment records'); loadPaymentRecords() })
+        // setSocket(newSocket)
+        // return () => { newSocket.disconnect() }
     }, [])
 
     const formatDate = (dateString: string) => {

@@ -1,0 +1,14 @@
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { StatsService } from './stats.service';
+
+@Controller('stats')
+@UseGuards(AuthGuard('jwt'))
+export class StatsController {
+    constructor(private statsService: StatsService) { }
+
+    @Get()
+    getStats(@Query('period') period: string) {
+        return this.statsService.getStats(period);
+    }
+}

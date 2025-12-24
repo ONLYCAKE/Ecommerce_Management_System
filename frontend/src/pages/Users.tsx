@@ -1,9 +1,16 @@
-import { useEffect, useState, FormEvent } from 'react'
+import { useEffect, useState, FormEvent, useMemo } from 'react'
 import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { canCreate, canUpdate, canDelete } from '../utils/permissions'
 import { useConfirm } from '../context/ConfirmContext'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, Pencil, Trash2, Archive, RotateCcw, Save, ArrowLeft, AlertTriangle, FileText, Home, UserPlus, UserCog, Shield, Users as UsersIcon, UserCheck, Crown } from 'lucide-react'
+import UserPermissionManagementModal from '../components/role/UserPermissionManagementModal'
+import DataTable, { Column } from '../components/common/DataTable'
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
+import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchAndFilterBar'
+import TableActions, { ActionButton } from '../components/common/TableActions'
+import { RoleBadge, ArchivedBadge } from '../components/common/StatusBadge'
+import { useTableSort } from '../hooks/useTableFeatures'
 
 interface Role { id: number; name: string }
 interface UserForm {
@@ -23,7 +30,6 @@ interface UserForm {
 
 export default function Users() {
   const [items, setItems] = useState<any[]>([])
-  const [filtered, setFiltered] = useState<any[]>([])
   const [q, setQ] = useState<string>('')
   const [archived, setArchived] = useState<boolean>(false)
   const [page, setPage] = useState<number>(1)
@@ -31,6 +37,7 @@ export default function Users() {
   const [roles, setRoles] = useState<Role[]>([])
   const [showForm, setShowForm] = useState<boolean>(false)
   const [editing, setEditing] = useState<any | null>(null)
+  const [showPermissionsModal, setShowPermissionsModal] = useState<boolean>(false)
   const [form, setForm] = useState<UserForm>({
     email: '',
     firstName: '',
@@ -71,17 +78,57 @@ export default function Users() {
     })()
   }, [])
 
-  useEffect(() => {
-    const f = items.filter((u: any) =>
+  // Filter data by search query
+  const filtered = useMemo(() => {
+    return items.filter((u: any) =>
       [u.email, u.firstName, u.lastName, u.role?.name].join(' ').toLowerCase().includes(q.toLowerCase())
     )
-    setFiltered(f)
-    setPage(1)
   }, [q, items])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  // Apply sorting
+  const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(filtered)
+
+  // Calculate pagination
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize))
   const start = (page - 1) * pageSize
-  const currentPageData = filtered.slice(start, start + pageSize)
+  const currentPageData = sortedData.slice(start, start + pageSize)
+
+  // Summary cards data
+  const summaryCards: SummaryCard[] = useMemo(() => {
+    const totalUsers = items.length
+    const activeUsers = items.filter(u => !u.isArchived).length
+    const adminCount = items.filter(u => u.role?.name === 'SuperAdmin' || u.role?.name === 'Admin').length
+    const employeeCount = items.filter(u => u.role?.name === 'Employee').length
+
+    return [
+      {
+        title: 'Total Users',
+        value: totalUsers,
+        icon: UsersIcon,
+        color: 'blue',
+        subtitle: `${activeUsers} active`
+      },
+      {
+        title: 'Active Users',
+        value: activeUsers,
+        icon: UserCheck,
+        color: 'green'
+      },
+      {
+        title: 'Admins',
+        value: adminCount,
+        icon: Crown,
+        color: 'purple',
+        subtitle: 'SuperAdmin & Admin'
+      },
+      {
+        title: 'Employees',
+        value: employeeCount,
+        icon: UsersIcon,
+        color: 'orange'
+      }
+    ]
+  }, [items])
 
   const openCreate = () => {
     const def = roles.find((r) => r.name === 'Employee') || roles[0]
@@ -162,123 +209,163 @@ export default function Users() {
     }
   }
 
+  // Define table columns
+  const columns: Column[] = [
+    {
+      key: 'email',
+      label: 'Email',
+      sortable: true,
+      align: 'left',
+      render: (row: any) => (
+        <span className="font-medium text-gray-900">{row.email}</span>
+      )
+    },
+    {
+      key: 'firstName',
+      label: 'Name',
+      sortable: true,
+      align: 'left',
+      render: (row: any) => (
+        <span className="font-medium text-gray-900">
+          {row.firstName} {row.lastName}
+        </span>
+      )
+    },
+    {
+      key: 'role.name',
+      label: 'Role',
+      sortable: true,
+      align: 'center',
+      render: (row: any) => <RoleBadge role={row.role?.name || 'N/A'} />
+    },
+    {
+      key: 'isArchived',
+      label: 'Status',
+      sortable: true,
+      align: 'center',
+      render: (row: any) => <ArchivedBadge isArchived={row.isArchived} />
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (row: any) => {
+        const actions: ActionButton[] = [
+          {
+            label: 'Edit',
+            icon: Pencil,
+            onClick: () => openEdit(row),
+            color: 'blue',
+            show: canUpdate('user') && !row.isArchived
+          },
+          {
+            label: 'Archive',
+            icon: Archive,
+            onClick: () => archive(row.id),
+            color: 'orange',
+            show: canUpdate('user') && !row.isArchived
+          },
+          {
+            label: 'Delete',
+            icon: Trash2,
+            onClick: () => deleteUser(row.id),
+            color: 'red',
+            show: canDelete('user') && !row.isArchived
+          },
+          {
+            label: 'Restore',
+            icon: RotateCcw,
+            onClick: () => restoreUser(row.id),
+            color: 'green',
+            show: canUpdate('user') && row.isArchived
+          }
+        ]
+        return <TableActions actions={actions} />
+      }
+    }
+  ]
+
   return (
-    <div className="space-y-4">
-      <style>{`
-        .btn-restore { background-color: #16a34a; color: white; font-weight: 500; border-radius: 8px; padding: 6px 16px; transition: all 0.2s ease; }
-        .btn-restore:hover { background-color: #15803d; }
-      `}</style>
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <SummaryCards cards={summaryCards} />
 
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <input className="input max-w-xs" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+      {/* Search and Filter Bar */}
+      <SearchAndFilterBar
+        searchValue={q}
+        onSearchChange={setQ}
+        searchPlaceholder="Search by email, name, or role..."
+        filters={
+          <FilterCheckbox
+            label={archived ? 'Showing Archived' : 'Show Archived'}
+            checked={archived}
+            onChange={setArchived}
+            icon={archived && <Archive size={16} strokeWidth={1.8} />}
+          />
+        }
+        actions={
+          canCreate('user') && (
+            <button className="btn-primary flex items-center gap-2" onClick={openCreate}>
+              <UserPlus size={18} strokeWidth={1.8} />
+              Add User
+            </button>
+          )
+        }
+      />
 
-          {/* Checkbox for Archived Users */}
-          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
-            <input
-              type="checkbox"
-              checked={archived}
-              onChange={(e) => setArchived(e.target.checked)}
-              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              {archived ? '📦 Showing Archived' : 'Show Archived'}
-            </span>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600">Rows</label>
-          <select className="input w-20" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}>
-            {[3, 5, 10, 20].map((n) => (<option key={n} value={n}>{n}</option>))}
-          </select>
-
-          {canCreate('user') && (
-            <button className="btn-primary" onClick={openCreate}>Add User</button>
-          )}
-        </div>
-      </div>
-
-      <div className="card p-4">
-        <table className="table text-center">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentPageData.map((u: any) => (
-              <tr key={u.id} className="border-t">
-                <td>{u.email}</td>
-                <td>{u.firstName} {u.lastName}</td>
-                <td>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.role?.name === 'SuperAdmin' ? 'bg-purple-200 text-purple-800' : u.role?.name === 'Admin' ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'}`}>
-                    {u.role?.name}
-                  </span>
-                </td>
-                <td>{u.isArchived ? (<span className="text-red-600">Archived</span>) : ('Active')}</td>
-                <td className="text-center space-x-2">
-                  {canUpdate('user') && !u.isArchived && (
-                    <button className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors" onClick={() => openEdit(u)}>Edit</button>
-                  )}
-
-                  {canUpdate('user') && !u.isArchived && (
-                    <button className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors" onClick={() => archive(u.id)}>Archive</button>
-                  )}
-
-                  {canDelete('user') && !u.isArchived && (
-                    <button className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors" onClick={() => deleteUser(u.id)}>Delete</button>
-                  )}
-
-                  {canUpdate('user') && u.isArchived && (
-                    <button className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors" onClick={() => restoreUser(u.id)}>Restore</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {currentPageData.length === 0 && (
-          <div className="text-sm text-gray-500 py-6 text-center">No users found.</div>
-        )}
-
-        {filtered.length > 0 && (
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(1)}>
-                <ChevronsLeft size={18} className="text-gray-700" />
-              </button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                <ChevronLeft size={18} className="text-gray-700" />
-              </button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                <ChevronRight size={18} className="text-gray-700" />
-              </button>
-              <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(totalPages)}>
-                <ChevronsRight size={18} className="text-gray-700" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Data Table */}
+      <DataTable
+        columns={columns}
+        data={currentPageData}
+        currentPage={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        emptyMessage={archived ? "No archived users found" : "No users found"}
+      />
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-6 rounded-t-xl">
-              <h3 className="text-2xl font-bold">
-                {editing ? '✏️ Edit User' : '➕ Add New User'}
-              </h3>
-              <p className="text-blue-100 text-sm mt-1">
-                {editing ? 'Update user information' : 'Fill in the details to create a new user'}
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold flex items-center gap-2">
+                    {editing ? (
+                      <>
+                        <UserCog size={20} strokeWidth={1.8} />
+                        Edit User
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus size={20} strokeWidth={1.8} />
+                        Add New User
+                      </>
+                    )}
+                  </h3>
+                  <p className="text-blue-100 text-sm mt-1">
+                    {editing ? 'Update user information' : 'Fill in the details to create a new user'}
+                  </p>
+                </div>
+                {editing && user?.role === 'SuperAdmin' && form.roleId && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPermissionsModal(true)}
+                    className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg text-white font-medium transition-all flex items-center gap-2 border border-white/30"
+                  >
+                    <Shield size={18} />
+                    Manage Permissions
+                  </button>
+                )}
+              </div>
             </div>
 
             <form onSubmit={save} className="p-8">
@@ -286,7 +373,8 @@ export default function Users() {
               <div className="space-y-6">
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-500 flex items-center gap-2">
-                    <span>📋</span> Basic Information
+                    <FileText size={18} strokeWidth={1.8} />
+                    Basic Information
                   </h4>
                   <div className="grid grid-cols-1 gap-6">
                     <div>
@@ -361,7 +449,8 @@ export default function Users() {
                 {/* Address Section */}
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-purple-500 flex items-center gap-2">
-                    <span>🏠</span> Address Details
+                    <Home size={18} strokeWidth={1.8} />
+                    Address Details
                   </h4>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -461,19 +550,36 @@ export default function Users() {
                     className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 flex items-center gap-2"
                     onClick={() => setShowForm(false)}
                   >
-                    <span>✕</span> Cancel
+                    <ArrowLeft size={18} strokeWidth={1.8} />
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     className="px-8 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
                   >
-                    <span>💾</span> {editing ? 'Update User' : 'Save User'}
+                    <Save size={18} strokeWidth={1.8} />
+                    {editing ? 'Update User' : 'Save User'}
                   </button>
                 </div>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Permission Management Modal */}
+      {showPermissionsModal && editing && form.roleId && (
+        <UserPermissionManagementModal
+          user={{
+            id: editing.id,
+            email: form.email,
+            firstName: form.firstName,
+            lastName: form.lastName,
+            roleId: form.roleId
+          }}
+          roleName={roles.find(r => r.id === form.roleId)?.name || ''}
+          onClose={() => setShowPermissionsModal(false)}
+        />
       )}
     </div>
   )

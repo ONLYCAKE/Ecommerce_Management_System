@@ -3,12 +3,12 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { io, Socket } from 'socket.io-client'
-import { ChevronDown, DollarSign, ArrowUpDown, Filter, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronDown, DollarSign, ArrowUpDown, Filter, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, CheckCircle, Eye, Mail, IndianRupee, FileText, TrendingUp, Wallet, Plus } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import EmailTemplateModal from '../components/EmailTemplateModal'
-import InvoiceSummaryCard from '../components/InvoiceSummaryCard'
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
 import PaymentModal from '../components/PaymentModal'
 
 import FinalizeInvoiceModal from '../components/FinalizeInvoiceModal'
@@ -23,6 +23,14 @@ export default function Invoices() {
   // Data state
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+
+  //Summary data state
+  const [summaryData, setSummaryData] = useState({
+    totalSales: 0,
+    totalReceived: 0,
+    totalBalance: 0,
+    count: 0
+  })
 
   // Filter state
   const [statusFilter, setStatusFilter] = useState<string>('All')
@@ -113,6 +121,20 @@ export default function Invoices() {
     }
   }
 
+  // Fetch summary data
+  const loadSummary = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (statusFilter !== 'All') params.append('status', statusFilter)
+      if (paymentMethodFilter.length > 0) params.append('paymentMethod', paymentMethodFilter.join(','))
+
+      const { data } = await api.get(`/invoices/summary?${params.toString()}`)
+      setSummaryData(data)
+    } catch (error) {
+      console.error('Failed to fetch summary:', error)
+    }
+  }
+
   // Clear report mode and date range
   const clearReportFilters = () => {
     setDateFrom(null)
@@ -124,6 +146,7 @@ export default function Invoices() {
   // Load on filter/sort change
   useEffect(() => {
     load()
+    loadSummary()
   }, [statusFilter, paymentMethodFilter, dateFilter, dateFrom, dateTo, sortBy, sortOrder, partyNameSearch])
 
   // Socket.IO real-time updates
@@ -138,9 +161,7 @@ export default function Invoices() {
     // Payment events
     newSocket.on('payment.created', () => {
       load()
-      if ((window as any).refreshInvoiceSummary) {
-        (window as any).refreshInvoiceSummary()
-      }
+      loadSummary()
     })
 
     newSocket.on('payment.updated', () => {
@@ -275,10 +296,10 @@ export default function Invoices() {
   }
 
   return (
-    <div className="p-8 min-h-screen bg-gray-50">
+    <div className="space-y-6">
       {/* Report Banner - shown when accessing from Dashboard */}
       {reportMode && (
-        <div className={`mb-4 p-4 rounded-lg flex items-center justify-between ${reportMode === 'daybook'
+        <div className={`p-4 rounded-lg flex items-center justify-between ${reportMode === 'daybook'
           ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white'
           : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
           }`}>
@@ -305,96 +326,121 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Sale Invoices</h1>
-        <div className="flex items-center gap-4">
+      {/* Summary Cards */}
+      <SummaryCards cards={[
+        {
+          title: 'Total Invoices',
+          value: summaryData.count,
+          icon: FileText,
+          color: 'blue',
+          subtitle: 'All invoices'
+        },
+        {
+          title: 'Total Sales',
+          value: formatCurrency(summaryData.totalSales),
+          icon: DollarSign,
+          color: 'indigo',
+          subtitle: 'Total amount'
+        },
+        {
+          title: 'Received',
+          value: formatCurrency(summaryData.totalReceived),
+          icon: Wallet,
+          color: 'green',
+          subtitle: 'Paid amount'
+        },
+        {
+          title: 'Balance',
+          value: formatCurrency(summaryData.totalBalance),
+          icon: TrendingUp,
+          color: 'orange',
+          subtitle: 'Pending'
+        }
+      ]} />
+
+      {/* Search and Filter Bar */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          {/* Left side - Search and Filters */}
+          <div className="flex items-center gap-3 flex-1">
+            {/* Status Filter Buttons */}
+            {['All', 'Draft', 'Unpaid', 'Partial', 'Paid'].map(filter => (
+              <button
+                key={filter}
+                onClick={() => setStatusFilter(filter)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === filter
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                {filter}
+              </button>
+            ))}
+
+            {/* Payment Method Filter */}
+            <div className="relative">
+              <button
+                onClick={() => setShowPaymentFilter(!showPaymentFilter)}
+                className="px-4 py-2 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-2"
+              >
+                <Filter size={16} />
+                Payment Type
+                {paymentMethodFilter.length > 0 && (
+                  <span className="ml-1 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
+                    {paymentMethodFilter.length}
+                  </span>
+                )}
+              </button>
+
+              {showPaymentFilter && (
+                <div className="absolute top-full mt-2 bg-white rounded-lg shadow-lg p-4 z-10 w-56 border border-gray-200">
+                  <div className="space-y-2">
+                    {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque'].map(method => (
+                      <label key={method} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={paymentMethodFilter.includes(method)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setPaymentMethodFilter([...paymentMethodFilter, method])
+                            } else {
+                              setPaymentMethodFilter(paymentMethodFilter.filter(m => m !== method))
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm">{method}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => setPaymentMethodFilter([])}
+                      className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => setShowPaymentFilter(false)}
+                      className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right side - Add Sale Button */}
           {canCreate && (
             <button
               onClick={() => navigate('/invoices/new')}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg transition-all"
+              className="btn-primary flex items-center gap-2 whitespace-nowrap"
             >
-              + Add Sale
+              <Plus size={18} strokeWidth={1.8} />
+              Add Sale
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Card */}
-      <InvoiceSummaryCard
-        filters={{
-          status: statusFilter !== 'All' ? statusFilter : undefined,
-          paymentMethod: paymentMethodFilter.length > 0 ? paymentMethodFilter.join(',') : undefined
-        }}
-      />
-
-      {/* Filters */}
-      <div className="flex gap-3 mb-4">
-        {/* Status Filter Buttons */}
-        {['All', 'Draft', 'Unpaid', 'Partial', 'Paid'].map(filter => (
-          <button
-            key={filter}
-            onClick={() => setStatusFilter(filter)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === filter
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-          >
-            {filter}
-          </button>
-        ))}
-
-        {/* Payment Method Filter */}
-        <div className="relative">
-          <button
-            onClick={() => setShowPaymentFilter(!showPaymentFilter)}
-            className="px-4 py-2 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-2"
-          >
-            <Filter size={16} />
-            Payment Type
-            {paymentMethodFilter.length > 0 && (
-              <span className="ml-1 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
-                {paymentMethodFilter.length}
-              </span>
-            )}
-          </button>
-
-          {showPaymentFilter && (
-            <div className="absolute top-full mt-2 bg-white rounded-lg shadow-lg p-4 z-10 w-56">
-              <div className="space-y-2">
-                {['Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque'].map(method => (
-                  <label key={method} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={paymentMethodFilter.includes(method)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setPaymentMethodFilter([...paymentMethodFilter, method])
-                        } else {
-                          setPaymentMethodFilter(paymentMethodFilter.filter(m => m !== method))
-                        }
-                      }}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">{method}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={() => setPaymentMethodFilter([])}
-                  className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
-                >
-                  Clear
-                </button>
-                <button
-                  onClick={() => setShowPaymentFilter(false)}
-                  className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
           )}
         </div>
       </div>
@@ -658,8 +704,9 @@ export default function Invoices() {
 
         {/* Pagination - with footer rows-per-page selector */}
         {items.length > 0 && (
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-4">
+          <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between gap-4">
+              {/* Rows per page - LEFT */}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-600">Rows per page:</label>
                 <select
@@ -678,6 +725,7 @@ export default function Invoices() {
                 </select>
               </div>
 
+              {/* Page navigation - RIGHT */}
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-600">
                   Page {page} of {totalPages}

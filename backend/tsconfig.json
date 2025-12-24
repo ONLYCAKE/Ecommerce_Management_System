@@ -1,33 +1,30 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "noImplicitAny": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "skipLibCheck": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "typeRoots": [
-      "./src/types",
-      "./node_modules/@types"
-    ],
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "noFallthroughCasesInSwitch": false,
     "types": [
-      "node",
-      "express"
+      "node"
     ]
   },
   "include": [
-    "src",
-    "src/types"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",

@@ -1,20 +1,21 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { FiGrid, FiUsers, FiUserCheck, FiShield, FiTruck, FiShoppingBag, FiPackage, FiFileText, FiDollarSign, FiChevronLeft } from 'react-icons/fi'
+import { LayoutDashboard, Users, UserCheck, Shield, Building, User, Package, FileText, CreditCard, ClipboardList, ChevronLeft } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth.ts'
 import avatarDefault from '../assets/default-avatar.svg'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: <FiGrid /> },
-  { to: '/users', label: 'Users', icon: <FiUsers /> },
-  { to: '/roles', label: 'Roles', icon: <FiUserCheck /> },
-  { to: '/permissions', label: 'Permissions', icon: <FiShield /> },
-  { to: '/suppliers', label: 'Suppliers', icon: <FiTruck /> },
-  { to: '/buyers', label: 'Buyers', icon: <FiShoppingBag /> },
-  { to: '/products', label: 'Products', icon: <FiPackage /> },
-  { to: '/invoices', label: 'Invoices', icon: <FiFileText /> },
-  { to: '/payments', label: 'Payment Records', icon: <FiDollarSign /> },
-  { to: '/orders', label: 'Orders', icon: <FiFileText /> },
+  { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} strokeWidth={1.8} /> },
+  { to: '/users', label: 'Users', icon: <Users size={18} strokeWidth={1.8} /> },
+  { to: '/roles', label: 'Roles', icon: <UserCheck size={18} strokeWidth={1.8} /> },
+  { to: '/permissions', label: 'Permissions', icon: <Shield size={18} strokeWidth={1.8} /> },
+  { to: '/suppliers', label: 'Suppliers', icon: <Building size={18} strokeWidth={1.8} /> },
+  { to: '/buyers', label: 'Buyers', icon: <User size={18} strokeWidth={1.8} /> },
+  { to: '/products', label: 'Products', icon: <Package size={18} strokeWidth={1.8} /> },
+  { to: '/invoices', label: 'Invoices', icon: <FileText size={18} strokeWidth={1.8} /> },
+  { to: '/proformas', label: 'Proforma Invoices', icon: <FileText size={18} strokeWidth={1.8} /> },
+  { to: '/payments', label: 'Payment Records', icon: <CreditCard size={18} strokeWidth={1.8} /> },
+  { to: '/orders', label: 'Orders', icon: <ClipboardList size={18} strokeWidth={1.8} /> },
 ]
 
 export default function Sidebar() {
@@ -29,7 +30,7 @@ export default function Sidebar() {
           <div className="font-heading font-medium text-text">Uday Dairy</div>
         </div>
         <button onClick={() => setCollapsed(v => !v)} className="p-2 rounded-lg hover:bg-blue-100 hover:text-primary">
-          <FiChevronLeft className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
+          <ChevronLeft size={18} strokeWidth={1.8} className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
         </button>
       </div>
       <nav className="px-2 space-y-1">

@@ -7,6 +7,7 @@ interface PaymentModalProps {
     invoice: any;
     onClose: () => void;
     onSuccess: () => void;
+    initialAmount?: number;
 }
 
 const ROUND_OFF_THRESHOLD = 1.00; // ₹1.00
@@ -41,8 +42,8 @@ function calculateRoundOff(paymentAmount: number, remainingBalance: number) {
     return { adjustedAmount: roundedPayment, roundOff: 0, shouldApplyRoundOff: false };
 }
 
-export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentModalProps) {
-    const [amount, setAmount] = useState('');
+export default function PaymentModal({ invoice, onClose, onSuccess, initialAmount }: PaymentModalProps) {
+    const [amount, setAmount] = useState(initialAmount ? initialAmount.toString() : '');
     const [method, setMethod] = useState('Cash');
     const [reference, setReference] = useState('');
     const [loading, setLoading] = useState(false);

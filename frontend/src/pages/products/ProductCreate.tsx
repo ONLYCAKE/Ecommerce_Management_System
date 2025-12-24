@@ -24,9 +24,11 @@ export default function ProductCreate() {
         const fetchSuppliers = async () => {
             try {
                 const { data } = await api.get('/suppliers')
-                setSuppliers(data)
+                const suppliersList = Array.isArray(data) ? data : (data?.items || [])
+                setSuppliers(suppliersList)
             } catch (err) {
                 console.error('Error loading suppliers', err)
+                setSuppliers([])
             }
         }
         fetchSuppliers()

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Image as ImageIcon } from 'lucide-react'
 
 interface SignaturePanelProps {
     signature: string | null
@@ -47,7 +48,7 @@ export default function SignaturePanel({ signature, onChange }: SignaturePanelPr
     }
 
     return (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3 w-full max-w-sm">
             <h3 className="font-semibold text-gray-800 text-sm border-b pb-2">Signature</h3>
 
             {signature ? (
@@ -78,9 +79,7 @@ export default function SignaturePanel({ signature, onChange }: SignaturePanelPr
                     className="btn-primary w-full text-sm flex items-center justify-center gap-2"
                     onClick={openFileDialog}
                 >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                    <ImageIcon size={18} strokeWidth={1.8} className="shrink-0" />
                     Upload Signature Image
                 </button>
             )}

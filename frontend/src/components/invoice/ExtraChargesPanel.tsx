@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, X, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 
 export interface ExtraCharge {
     id: string
@@ -38,9 +38,7 @@ export default function ExtraChargesPanel({ charges, onChange, enabled, onToggle
             <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-gray-200">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                        </svg>
+                        <Plus size={16} strokeWidth={1.8} className="text-amber-600" />
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900">Extra Charges</h3>

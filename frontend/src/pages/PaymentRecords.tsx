@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
-import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, IndianRupee, Calendar, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, IndianRupee, Calendar, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, CreditCard } from 'lucide-react'
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
 
 interface PaymentRecord {
     id: number
@@ -89,11 +90,13 @@ export default function PaymentRecords() {
             try {
                 setLoading(true)
                 const { data } = await api.get('/payments/records')
-                setPayments(data || [])
+                const paymentsList = Array.isArray(data) ? data : (data?.items || [])
+                setPayments(paymentsList)
                 setError('')
             } catch (err: any) {
                 console.error('Failed to fetch payment records:', err)
                 setError(err.response?.data?.message || 'Failed to load payment records')
+                setPayments([])
             } finally {
                 setLoading(false)
             }
@@ -190,6 +193,44 @@ export default function PaymentRecords() {
     }
 
     // Summary stats
+    const summaryCards: SummaryCard[] = useMemo(() => {
+        const totalPaid = filteredAndSorted.reduce((sum, p) => sum + p.paidAmount, 0)
+        const totalRemaining = filteredAndSorted.reduce((sum, p) => sum + (p.remainingBalance || 0), 0)
+        const count = filteredAndSorted.length
+        const avgPayment = count > 0 ? totalPaid / count : 0
+
+        return [
+            {
+                title: 'Total Collected',
+                value: formatCurrency(totalPaid),
+                icon: DollarSign,
+                color: 'green',
+                subtitle: 'Total received'
+            },
+            {
+                title: 'Pending Balance',
+                value: formatCurrency(totalRemaining),
+                icon: TrendingUp,
+                color: 'orange',
+                subtitle: 'Outstanding amount'
+            },
+            {
+                title: 'Total Records',
+                value: count,
+                icon: Calendar,
+                color: 'blue',
+                subtitle: `${count} payments`
+            },
+            {
+                title: 'Average Payment',
+                value: formatCurrency(avgPayment),
+                icon: CreditCard,
+                color: 'purple',
+                subtitle: 'Per transaction'
+            }
+        ]
+    }, [filteredAndSorted])
+
     const stats = useMemo(() => {
         const totalPaid = filteredAndSorted.reduce((sum, p) => sum + p.paidAmount, 0)
         const totalRemaining = filteredAndSorted.reduce((sum, p) => sum + (p.remainingBalance || 0), 0)
@@ -209,48 +250,14 @@ export default function PaymentRecords() {
 
     return (
         <div className="space-y-6">
+            {/* Summary Cards */}
+            <SummaryCards cards={summaryCards} />
+
             {/* Page Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Payment Records</h1>
                     <p className="text-sm text-gray-500 mt-1">View and search all payment transactions</p>
-                </div>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-lg bg-green-100">
-                            <IndianRupee className="h-6 w-6 text-green-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-500">Total Collected</p>
-                            <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.totalPaid)}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-lg bg-amber-100">
-                            <IndianRupee className="h-6 w-6 text-amber-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-500">Pending Balance</p>
-                            <p className="text-2xl font-bold text-amber-600">{formatCurrency(stats.totalRemaining)}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-lg bg-blue-100">
-                            <Calendar className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-500">Total Records</p>
-                            <p className="text-2xl font-bold text-blue-600">{stats.count}</p>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -415,7 +422,7 @@ export default function PaymentRecords() {
                 {/* Pagination */}
                 {filteredAndSorted.length > 0 && (
                     <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-                        <div className="flex items-center justify-end gap-4">
+                        <div className="flex items-center justify-between gap-4">
                             {/* Rows per page */}
                             <div className="flex items-center gap-2">
                                 <label className="text-sm font-medium text-gray-600">Rows per page:</label>

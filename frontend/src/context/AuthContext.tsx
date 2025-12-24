@@ -92,50 +92,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     verifyUser();
   }, [token, navigate]);
 
-  /* ------------------------- SOCKET CONNECTION ------------------------- */
-  useEffect(() => {
-    if (!token) {
-      if (socket) {
-        try {
-          socket.disconnect();
-        } catch { }
-      }
-      setSocket(null);
-      return;
-    }
-
-    const s: Socket = io(
-      import.meta.env.VITE_SOCKET_URL || "http://localhost:5000",
-      {
-        transports: ["websocket", "polling"],
-        auth: { token },
-      }
-    );
-
-    s.on("connect", () => console.log("✅ Socket connected"));
-    s.on("disconnect", () => console.log("🔌 Socket disconnected"));
-
-    // 🔁 Refresh permissions live
-    s.on("permissions.updated", async (payload: { roleId: number }) => {
-      if (user?.roleId && payload.roleId === user.roleId) {
-        try {
-          const { data } = await api.get<User>("/auth/me");
-          setUser(data);
-          console.log("🔄 Permissions refreshed for role:", payload.roleId);
-        } catch (err: any) {
-          console.warn("Permission refresh failed:", err?.response?.data || err);
-        }
-      }
-    });
-
-    setSocket(s);
-
-    return () => {
-      try {
-        s.disconnect();
-      } catch { }
-    };
-  }, [token, user?.roleId]);
+  /* ------------------------- SOCKET CONNECTION (DISABLED) ------------------------- */
+  // Socket.IO is not implemented in NestJS backend yet
+  // useEffect(() => {
+  //   if (!token) {
+  //     if (socket) { try { socket.disconnect(); } catch { } }
+  //     setSocket(null);
+  //     return;
+  //   }
+  //   const s: Socket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:3000", {
+  //     transports: ["websocket", "polling"],
+  //     auth: { token },
+  //   });
+  //   s.on("connect", () => console.log("✅ Socket connected"));
+  //   s.on("disconnect", () => console.log("🔌 Socket disconnected"));
+  //   s.on("permissions.updated", async (payload: { roleId: number }) => {
+  //     if (user?.roleId && payload.roleId === user.roleId) {
+  //       try {
+  //         const { data } = await api.get<User>("/auth/me");
+  //         setUser(data);
+  //         console.log("🔄 Permissions refreshed for role:", payload.roleId);
+  //       } catch (err: any) {
+  //         console.warn("Permission refresh failed:", err?.response?.data || err);
+  //       }
+  //     }
+  //   });
+  //   setSocket(s);
+  //   return () => { try { s.disconnect(); } catch { } };
+  // }, [token, user?.roleId]);
 
   /* -------------------------- LOGIN & LOGOUT -------------------------- */
   const login = (tk: string, usr: User) => {

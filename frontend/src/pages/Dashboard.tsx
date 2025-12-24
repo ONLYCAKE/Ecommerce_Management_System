@@ -14,6 +14,7 @@ import {
   BarChart,
   Bar
 } from 'recharts'
+import { Users, Building, ShoppingCart, Package, FileText, CheckCircle, TrendingUp, Calendar, BarChart3, ShoppingBag } from 'lucide-react'
 
 type Stats = {
   totals: { users: number; suppliers: number; buyers: number; products: number }
@@ -42,31 +43,32 @@ export default function Dashboard() {
   }
 
   useEffect(() => { load() }, [period])
-  useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000')
-    socket.on('invoice.created', load)
-    socket.on('invoice.updated', load)
-    socket.on('invoice.deleted', load)
-    socket.on('invoice.completed', load)
-    return () => { socket.disconnect() }
-  }, [])
+  // Socket.IO disabled - NestJS backend doesn't have Socket.IO Gateway implemented yet
+  // useEffect(() => {
+  //   const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000')
+  //   socket.on('invoice.created', load)
+  //   socket.on('invoice.updated', load)
+  //   socket.on('invoice.deleted', load)
+  //   socket.on('invoice.completed', load)
+  //   return () => { socket.disconnect() }
+  // }, [])
 
   // Format chart data for better display
-  const chartData = stats.revenueByMonth.map(item => ({
+  const chartData = (stats.revenueByMonth || []).map(item => ({
     name: item.label.split('-')[1] + '/' + item.label.split('-')[0].slice(2),
     revenue: item.total
   }))
 
   // Calculate total revenue from chart data
-  const totalRevenue = stats.revenueByMonth.reduce((sum, m) => sum + m.total, 0)
+  const totalRevenue = (stats.revenueByMonth || []).reduce((sum, m) => sum + m.total, 0)
 
   const cards = [
-    { title: 'Total Users', value: stats.totals.users, icon: '👥', color: 'from-blue-500 to-blue-600' },
-    { title: 'Suppliers', value: stats.totals.suppliers, icon: '🏭', color: 'from-green-500 to-green-600' },
-    { title: 'Buyers', value: stats.totals.buyers, icon: '🛒', color: 'from-purple-500 to-purple-600' },
-    { title: 'Products', value: stats.totals.products, icon: '📦', color: 'from-orange-500 to-orange-600' },
-    { title: 'Invoices (Draft)', value: stats.invoices.draft, icon: '📝', color: 'from-yellow-500 to-yellow-600' },
-    { title: 'Invoices (Completed)', value: stats.invoices.completed, icon: '✅', color: 'from-teal-500 to-teal-600' },
+    { title: 'Total Users', value: stats.totals.users, icon: <Users size={24} strokeWidth={1.5} />, color: 'from-blue-500 to-blue-600' },
+    { title: 'Suppliers', value: stats.totals.suppliers, icon: <Building size={24} strokeWidth={1.5} />, color: 'from-green-500 to-green-600' },
+    { title: 'Buyers', value: stats.totals.buyers, icon: <ShoppingCart size={24} strokeWidth={1.5} />, color: 'from-purple-500 to-purple-600' },
+    { title: 'Products', value: stats.totals.products, icon: <Package size={24} strokeWidth={1.5} />, color: 'from-orange-500 to-orange-600' },
+    { title: 'Invoices (Draft)', value: stats.invoices.draft, icon: <FileText size={24} strokeWidth={1.5} />, color: 'from-yellow-500 to-yellow-600' },
+    { title: 'Invoices (Completed)', value: stats.invoices.completed, icon: <CheckCircle size={24} strokeWidth={1.5} />, color: 'from-teal-500 to-teal-600' },
   ]
 
   const handleSaleReport = () => {
@@ -107,7 +109,7 @@ export default function Dashboard() {
             className={`bg-gradient-to-br ${c.color} rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-2xl">{c.icon}</span>
+              <div className="text-white/90">{c.icon}</div>
             </div>
             <div className="text-3xl font-bold mb-1">{c.value}</div>
             <div className="text-sm opacity-90">{c.title}</div>
@@ -143,7 +145,10 @@ export default function Dashboard() {
       {/* Analytics Chart */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800">📊 Sales Analytics</h2>
+          <div className="flex items-center gap-2">
+            <BarChart3 size={20} className="text-gray-600" />
+            <h2 className="text-xl font-bold text-gray-800">Sales Analytics</h2>
+          </div>
           <div className="text-sm text-gray-500">Last 12 Months Revenue</div>
         </div>
         <div className="h-80">
@@ -198,7 +203,10 @@ export default function Dashboard() {
         >
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <div className="text-lg font-bold mb-1">📈 Sale Report</div>
+              <div className="flex items-center gap-2 text-lg font-bold mb-1">
+                <TrendingUp size={20} />
+                <span>Sale Report</span>
+              </div>
               <div className="text-sm opacity-90">View detailed sales invoices for selected period</div>
             </div>
             <div className="text-3xl group-hover:translate-x-2 transition-transform">→</div>
@@ -211,7 +219,10 @@ export default function Dashboard() {
         >
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <div className="text-lg font-bold mb-1">📅 Daybook Report</div>
+              <div className="flex items-center gap-2 text-lg font-bold mb-1">
+                <Calendar size={20} />
+                <span>Daybook Report</span>
+              </div>
               <div className="text-sm opacity-90">View today's transactions and activities</div>
             </div>
             <div className="text-3xl group-hover:translate-x-2 transition-transform">→</div>
@@ -222,7 +233,10 @@ export default function Dashboard() {
       {/* Recent Products */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800">🛍️ Recent Products</h2>
+          <div className="flex items-center gap-2">
+            <ShoppingBag size={20} className="text-gray-600" />
+            <h2 className="text-xl font-bold text-gray-800">Recent Products</h2>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

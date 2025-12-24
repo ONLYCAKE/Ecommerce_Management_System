@@ -3,10 +3,16 @@ import api from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { formatINR } from '../utils/currency'
 import { useConfirm } from '../context/ConfirmContext'
-import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
+import { Package, TrendingUp, AlertTriangle, Pencil, Trash2, Archive, RotateCcw, Save, ArrowLeft, Lightbulb, Plus, Box } from 'lucide-react'
+import DataTable, { Column } from '../components/common/DataTable'
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
+import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchAndFilterBar'
+import TableActions, { ActionButton } from '../components/common/TableActions'
+import { StockBadge } from '../components/common/StatusBadge'
+import { useTableSort } from '../hooks/useTableFeatures'
 
 interface Supplier { id: number; name: string }
-interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string; taxType?: string; taxRate?: number }
+interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string; taxType?: string; taxRate?: number; isArchived?: boolean }
 interface ProductForm { sku: string; title: string; category: string; description: string; price: number | string; stock: number | string; supplierId: number | string; hsnCode: string; taxType: string; taxRate: number }
 
 export default function Products() {
@@ -14,8 +20,6 @@ export default function Products() {
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [sortBy, setSortBy] = useState<keyof Product>('title')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -33,36 +37,66 @@ export default function Products() {
 
   const fetchAll = async () => {
     const { data } = await api.get('/products', { params: { archived } })
-    setItems(data)
+    setItems(Array.isArray(data) ? data : (data?.items || []))
   }
   useEffect(() => { fetchAll() }, [archived])
 
-  useEffect(() => { (async () => { const s = await api.get('/suppliers'); setSuppliers(s.data) })() }, [])
+  useEffect(() => {
+    (async () => {
+      const s = await api.get('/suppliers')
+      setSuppliers(Array.isArray(s.data) ? s.data : (s.data?.items || []))
+    })()
+  }, [])
 
-  const filteredAndSorted = useMemo(() => {
-    const filtered = items.filter(p => Object.values(p).join(' ').toLowerCase().includes(q.toLowerCase()))
-    return filtered.sort((a, b) => {
-      let valA: any = a[sortBy]
-      let valB: any = b[sortBy]
-      if (typeof valA === 'string') valA = valA.toLowerCase()
-      if (typeof valB === 'string') valB = valB.toLowerCase()
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1
-      return 0
-    })
-  }, [items, q, sortBy, sortOrder])
+  // Filter by search query
+  const filtered = useMemo(() => {
+    return items.filter(p => Object.values(p).join(' ').toLowerCase().includes(q.toLowerCase()))
+  }, [items, q])
 
-  const paged = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filteredAndSorted.slice(start, start + pageSize)
-  }, [filteredAndSorted, page, pageSize])
+  // Apply sorting
+  const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(filtered)
 
-  const totalPages = Math.ceil(filteredAndSorted.length / pageSize) || 1
+  // Calculate pagination
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1
+  const start = (page - 1) * pageSize
+  const paged = sortedData.slice(start, start + pageSize)
 
-  const handleSort = (column: keyof Product) => {
-    if (sortBy === column) setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))
-    else { setSortBy(column); setSortOrder('asc') }
-  }
+  // Summary cards data
+  const summaryCards: SummaryCard[] = useMemo(() => {
+    const totalProducts = items.filter(p => !p.isArchived).length
+    const totalStock = items.filter(p => !p.isArchived).reduce((sum, p) => sum + p.stock, 0)
+    const lowStock = items.filter(p => !p.isArchived && p.stock < 10).length
+
+    return [
+      {
+        title: 'Total Products',
+        value: totalProducts,
+        icon: Package,
+        color: 'blue',
+        subtitle: `${items.length} including archived`
+      },
+      {
+        title: 'Total Stock',
+        value: totalStock,
+        icon: Box,
+        color: 'green',
+        subtitle: 'Units in inventory'
+      },
+      {
+        title: 'Low Stock Items',
+        value: lowStock,
+        icon: AlertTriangle,
+        color: 'orange',
+        subtitle: 'Below 10 units'
+      },
+      {
+        title: 'Average Price',
+        value: items.length > 0 ? formatINR(items.reduce((sum, p) => sum + p.price, 0) / items.length) : formatINR(0),
+        icon: TrendingUp,
+        color: 'purple'
+      }
+    ]
+  }, [items])
 
   const validate = () => {
     const errs: Record<string, string> = {}
@@ -138,139 +172,172 @@ export default function Products() {
     fetchAll()
   }
 
+  // Define table columns
+  const columns: Column[] = [
+    {
+      key: 'sku',
+      label: 'SKU',
+      sortable: true,
+      align: 'left',
+      render: (row: Product) => (
+        <span className="font-mono text-sm text-blue-600 font-medium">{row.sku || 'N/A'}</span>
+      )
+    },
+    {
+      key: 'title',
+      label: 'Product Name',
+      sortable: true,
+      align: 'left',
+      render: (row: Product) => (
+        <span className="font-semibold text-gray-900">{row.title}</span>
+      )
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      sortable: true,
+      align: 'left',
+      render: (row: Product) => (
+        <span className="text-gray-600">{row.category || '-'}</span>
+      )
+    },
+    {
+      key: 'supplier.name',
+      label: 'Supplier',
+      sortable: true,
+      align: 'left',
+      render: (row: Product) => (
+        <span className="text-gray-600">{row.supplier?.name || '-'}</span>
+      )
+    },
+    {
+      key: 'price',
+      label: 'Price',
+      sortable: true,
+      align: 'right',
+      render: (row: Product) => (
+        <span className="font-medium text-gray-900">{formatINR(row.price)}</span>
+      )
+    },
+    {
+      key: 'stock',
+      label: 'Stock',
+      sortable: true,
+      align: 'right',
+      render: (row: Product) => <StockBadge stock={row.stock} />
+    },
+    {
+      key: 'hsnCode',
+      label: 'HSN/SAC',
+      sortable: false,
+      align: 'center',
+      render: (row: Product) => (
+        <span className="font-mono text-xs text-gray-600">{row.hsnCode || '-'}</span>
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (row: Product) => {
+        const actions: ActionButton[] = [
+          {
+            label: 'Edit',
+            icon: Pencil,
+            onClick: () => open(row),
+            color: 'blue',
+            show: canUpdate && !archived
+          },
+          {
+            label: 'Delete',
+            icon: Trash2,
+            onClick: () => deleteProduct(row.id),
+            color: 'red',
+            show: canDelete && !archived
+          },
+          {
+            label: 'Archive',
+            icon: Archive,
+            onClick: () => archiveProduct(row.id),
+            color: 'orange',
+            show: canDelete && !archived
+          },
+          {
+            label: 'Restore',
+            icon: RotateCcw,
+            onClick: () => restoreProduct(row.id),
+            color: 'green',
+            show: canUpdate && archived
+          }
+        ]
+        return <TableActions actions={actions} />
+      }
+    }
+  ]
+
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <input
-              className="input pl-10 pr-4 py-2.5 w-80 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              placeholder="Search products by name, SKU, or category..."
-              value={q}
-              onChange={e => setQ(e.target.value)}
-            />
-            <svg className="absolute left-3 top-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+      {/* Summary Cards */}
+      <SummaryCards cards={summaryCards} />
 
-          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
-            <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer" />
-            <span className="text-sm font-medium text-gray-700">{archived ? '📦 Showing Archived' : 'Show Archived'}</span>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {canCreate && (
-            <button
-              className="btn-primary px-5 py-2.5 font-medium shadow-sm hover:shadow-md transition-all flex items-center gap-2"
-              onClick={() => open(null)}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+      {/* Search and Filter Bar */}
+      <SearchAndFilterBar
+        searchValue={q}
+        onSearchChange={setQ}
+        searchPlaceholder="Search by name, SKU, or category..."
+        filters={
+          <FilterCheckbox
+            label={archived ? 'Showing Archived' : 'Show Archived'}
+            checked={archived}
+            onChange={setArchived}
+            icon={archived && <Archive size={16} strokeWidth={1.8} />}
+          />
+        }
+        actions={
+          canCreate && (
+            <button className="btn-primary flex items-center gap-2" onClick={() => open(null)}>
+              <Plus size={18} strokeWidth={1.8} />
               Add Product
             </button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      <div className="card p-6 shadow-sm">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('sku')}>SKU {sortBy === 'sku' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('title')}>Title {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">HSN/SAC</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('price')}>Price {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none" onClick={() => handleSort('stock')}>Stock {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
-              <th className="pb-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {paged.map(p => (
-              <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                <td className="py-4">
-                  <div className="text-sm font-mono text-blue-600 font-medium">{p.sku}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm font-semibold text-gray-900">{p.title}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm font-mono text-gray-600">{p.hsnCode || '-'}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm text-gray-600">{p.category || '-'}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm text-gray-600">{p.supplier?.name || '-'}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm font-medium text-gray-900">{formatINR(p.price)}</div>
-                </td>
-                <td className="py-4">
-                  <div className="text-sm font-medium text-gray-700">{p.stock}</div>
-                </td>
-                <td className="py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    {!archived && canUpdate && (
-                      <button className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors" onClick={() => open(p)}>Edit</button>
-                    )}
-                    {!archived && canDelete && (
-                      <button className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors" onClick={() => deleteProduct(p.id)}>Delete</button>
-                    )}
-                    {!archived && canDelete && (
-                      <button className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors" onClick={() => archiveProduct(p.id)}>Archive</button>
-                    )}
-                    {archived && canUpdate && (
-                      <button className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors" onClick={() => restoreProduct(p.id)}>Restore</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredAndSorted.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-gray-500 py-6">No products found.</td></tr>
-            )}
-          </tbody>
-        </table>
-
-        {filteredAndSorted.length > 0 && (
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-600">Rows per page:</label>
-                <select
-                  className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  value={pageSize}
-                  onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
-                >
-                  {[3, 5, 10, 20].map(n => (<option key={n} value={n}>{n}</option>))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(1)}><ChevronsLeft size={18} className="text-gray-700" /></button>
-                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}><ChevronLeft size={18} className="text-gray-700" /></button>
-                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}><ChevronRight size={18} className="text-gray-700" /></button>
-                <button className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition" disabled={page >= totalPages} onClick={() => setPage(totalPages)}><ChevronsRight size={18} className="text-gray-700" /></button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Data Table */}
+      <DataTable
+        columns={columns}
+        data={paged}
+        currentPage={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        emptyMessage={archived ? "No archived products found" : "No products found"}
+      />
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-orange-600 to-orange-700 text-white px-8 py-6 rounded-t-xl">
-              <h3 className="text-2xl font-bold">
-                {editing ? '✏️ Edit Product' : '➕ Add New Product'}
+              <h3 className="text-2xl font-bold flex items-center gap-2">
+                {editing ? (
+                  <>
+                    <Pencil size={20} strokeWidth={1.8} />
+                    Edit Product
+                  </>
+                ) : (
+                  <>
+                    <Plus size={20} strokeWidth={1.8} />
+                    Add New Product
+                  </>
+                )}
               </h3>
               <p className="text-orange-100 text-sm mt-1">
                 {editing ? 'Update product information' : 'Fill in the details to create a new product'}
@@ -345,11 +412,13 @@ export default function Products() {
                   maxLength={8}
                 />
                 <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  <span>💡</span> Recommended: 8-digit Indian HSN format (e.g., 84212100)
+                  <Lightbulb size={14} strokeWidth={1.8} className="text-amber-500" />
+                  Recommended: 8-digit Indian HSN format (e.g., 84212100)
                 </p>
                 {form.hsnCode && form.hsnCode.length !== 6 && form.hsnCode.length !== 8 && form.hsnCode.length > 0 && (
                   <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                    <span>⚠️</span> HSN/SAC codes are typically 6 or 8 digits
+                    <AlertTriangle size={14} strokeWidth={1.8} />
+                    HSN/SAC codes are typically 6 or 8 digits
                   </p>
                 )}
               </div>
@@ -394,8 +463,14 @@ export default function Products() {
               </div>
 
               <div className="flex justify-end gap-2 mt-6">
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-                <button className="btn-primary">Save</button>
+                <button type="button" className="btn-secondary flex items-center gap-2" onClick={() => setShowForm(false)}>
+                  <ArrowLeft size={18} strokeWidth={1.8} />
+                  Cancel
+                </button>
+                <button className="btn-primary flex items-center gap-2">
+                  <Save size={18} strokeWidth={1.8} />
+                  Save
+                </button>
               </div>
             </form>
           </div>

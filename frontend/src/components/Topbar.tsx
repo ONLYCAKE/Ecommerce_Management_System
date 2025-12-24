@@ -1,4 +1,4 @@
-import { FiLogOut } from 'react-icons/fi'
+import { LogOut } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth.ts'
 
 export default function Topbar({ email, role }: { email?: string; role?: string }) {
@@ -15,7 +15,7 @@ export default function Topbar({ email, role }: { email?: string; role?: string 
             <div className="font-heading font-medium">{email}</div>
             <div className="opacity-75">{role}</div>
           </div>
-          <button onClick={logout} className="btn btn-primary flex items-center gap-2"><FiLogOut /> Logout</button>
+          <button onClick={logout} className="btn btn-primary flex items-center gap-2"><LogOut size={16} strokeWidth={1.8} /> Logout</button>
         </div>
       </div>
     </header>

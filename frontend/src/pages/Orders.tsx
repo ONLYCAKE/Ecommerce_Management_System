@@ -1,29 +1,43 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import api from '../api/client'
 import { formatINR } from '../utils/currency'
-import { io } from 'socket.io-client'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { FileText, Package, DollarSign, TrendingUp, Eye, Edit } from 'lucide-react'
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
+import DataTable, { Column } from '../components/common/DataTable'
+import { useTableSort, useTablePagination } from '../hooks/useTableFeatures'
+import TableActions, { ActionButton } from '../components/common/TableActions'
+import StatusBadge from '../components/common/StatusBadge'
 
-interface OrderItem { id: number; invoiceNo: string; createdAt: string; buyer?: { name: string }; supplier?: { name: string }; status: 'Draft' | 'Processing' | 'Completed'; total: number }
+interface OrderItem {
+  id: number
+  invoiceNo: string
+  createdAt: string
+  buyer?: { name: string }
+  supplier?: { name: string }
+  status: 'Draft' | 'Processing' | 'Completed'
+  total: number
+}
 
 export default function Orders() {
   const [items, setItems] = useState<OrderItem[]>([])
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
-  const load = async () => { const { data } = await api.get('/invoices'); setItems(data) }
-  useEffect(() => { load() }, [])
+  const load = async () => {
+    try {
+      setLoading(true)
+      const { data } = await api.get('/invoices')
+      setItems(Array.isArray(data) ? data : (data?.items || []))
+    } catch (err) {
+      console.error('Failed to load invoices:', err)
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  useEffect(() => {
-    const socket = io((import.meta as any).env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000')
-    socket.on('invoice.created', load)
-    socket.on('invoice.updated', load)
-    socket.on('invoice.deleted', load)
-    socket.on('invoice.completed', load)
-    return () => { socket.disconnect() }
-  }, [])
+  useEffect(() => { load() }, [])
 
   const previewPdf = async (invNo: string) => {
     try {
@@ -39,95 +53,170 @@ export default function Orders() {
     }
   }
 
+  // Apply sorting
+  const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(items)
+
+  // Pagination
+  const { currentPage, pageSize, paginatedData, setPage, setPageSize } = useTablePagination(sortedData, 10)
+
+  // Calculate summary metrics
+  const summaryMetrics = useMemo(() => {
+    const totalOrders = items.length
+    const totalAmount = items.reduce((sum, item) => sum + (Number(item.total) || 0), 0)
+    const draftCount = items.filter(item => item.status === 'Draft').length
+    const processingCount = items.filter(item => item.status === 'Processing').length
+    const completedCount = items.filter(item => item.status === 'Completed').length
+
+    return { totalOrders, totalAmount, draftCount, processingCount, completedCount }
+  }, [items])
+
+  // Summary cards
+  const summaryCards: SummaryCard[] = [
+    {
+      title: 'Total Orders',
+      value: summaryMetrics.totalOrders,
+      icon: FileText,
+      color: 'blue',
+      subtitle: 'All invoices'
+    },
+    {
+      title: 'Total Amount',
+      value: formatINR(summaryMetrics.totalAmount),
+      icon: DollarSign,
+      color: 'green',
+      subtitle: 'Combined value'
+    },
+    {
+      title: 'Processing',
+      value: summaryMetrics.processingCount,
+      icon: Package,
+      color: 'orange',
+      subtitle: 'In progress'
+    },
+    {
+      title: 'Completed',
+      value: summaryMetrics.completedCount,
+      icon: TrendingUp,
+      color: 'purple',
+      subtitle: 'Finished orders'
+    }
+  ]
+
+  // Define table columns
+  const columns: Column<OrderItem>[] = [
+    {
+      key: 'invoiceNo',
+      label: 'Invoice No',
+      sortable: true,
+      align: 'left',
+      render: (row: OrderItem) => (
+        <span className="font-mono text-sm font-semibold text-gray-900">{row.invoiceNo}</span>
+      )
+    },
+    {
+      key: 'createdAt',
+      label: 'Date',
+      sortable: true,
+      align: 'left',
+      render: (row: OrderItem) => (
+        <span className="text-gray-700">
+          {new Date(row.createdAt).toLocaleDateString('en-GB')}
+        </span>
+      )
+    },
+    {
+      key: 'buyer',
+      label: 'Buyer',
+      sortable: false,
+      align: 'left',
+      render: (row: OrderItem) => (
+        <span className="text-gray-700">{row.buyer?.name || '-'}</span>
+      )
+    },
+    {
+      key: 'supplier',
+      label: 'Supplier',
+      sortable: false,
+      align: 'left',
+      render: (row: OrderItem) => (
+        <span className="text-gray-700">{row.supplier?.name || '-'}</span>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      align: 'center',
+      render: (row: OrderItem) => {
+        const statusVariant =
+          row.status === 'Completed' ? 'success' :
+            row.status === 'Processing' ? 'info' : 'warning'
+
+        return <StatusBadge label={row.status} variant={statusVariant} size="sm" />
+      }
+    },
+    {
+      key: 'total',
+      label: 'Total',
+      sortable: true,
+      align: 'right',
+      render: (row: OrderItem) => (
+        <span className="font-semibold text-gray-900">{formatINR(row.total)}</span>
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (row: OrderItem) => {
+        const actions: ActionButton[] = [
+          {
+            label: 'View PDF',
+            icon: Eye,
+            onClick: () => previewPdf(row.invoiceNo),
+            color: 'purple',
+            show: true
+          },
+          {
+            label: 'Edit',
+            icon: Edit,
+            onClick: () => navigate(`/invoices/${row.invoiceNo}/edit`),
+            color: 'blue',
+            show: row.status === 'Draft'
+          }
+        ]
+        return <TableActions actions={actions} />
+      }
+    }
+  ]
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-lg font-semibold">Invoices</h1>
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-gray-600">Rows</label>
-          <select className="input w-20" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
-            {[3, 5, 10, 20].map(n => (<option key={n} value={n}>{n}</option>))}
-          </select>
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <SummaryCards cards={summaryCards} />
+
+      {/* Page Header */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">Orders / Invoices</h2>
         </div>
       </div>
 
-      <div className="card p-4">
-        <table className="table text-center">
-          <thead>
-            <tr>
-              <th>No</th>
-              <th>Date</th>
-              <th>Buyer</th>
-              <th>Supplier</th>
-              <th>Status</th>
-              <th>Total</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(items || []).length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-gray-500 py-6">No invoices found</td></tr>
-            ) : (
-              items.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize).map(inv => (
-                <tr key={inv.id} className="border-t hover:bg-[rgba(255,255,255,0.05)] transition-all">
-                  <td className="font-mono text-sm">{inv.invoiceNo}</td>
-                  <td>{new Date(inv.createdAt).toLocaleDateString()}</td>
-                  <td>{inv.buyer?.name}</td>
-                  <td>{inv.supplier?.name}</td>
-                  <td>
-                    <span className={`px-3 py-1 rounded-full text-xs ${inv.status === 'Draft' ? 'bg-yellow-500/20 text-yellow-300' : inv.status === 'Processing' ? 'bg-blue-500/20 text-blue-300' : 'bg-green-500/20 text-green-300'}`}>{inv.status}</span>
-                  </td>
-                  <td>{formatINR(inv.total)}</td>
-                  <td className="text-center">
-                    <button className="btn-primary text-sm" onClick={() => previewPdf(inv.invoiceNo)}>View / Download</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        {items.length > 0 && (
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600">
-                Page {page} of {Math.max(1, Math.ceil(items.length / pageSize))}
-              </span>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
-                disabled={page === 1}
-                onClick={() => setPage(1)}
-              >
-                <ChevronsLeft size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
-                disabled={page === 1}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-              >
-                <ChevronLeft size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
-                disabled={page >= Math.ceil(items.length / pageSize)}
-                onClick={() => setPage(p => Math.min(Math.ceil(items.length / pageSize) || 1, p + 1))}
-              >
-                <ChevronRight size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40 transition"
-                disabled={page >= Math.ceil(items.length / pageSize)}
-                onClick={() => setPage(Math.max(1, Math.ceil(items.length / pageSize)))}
-              >
-                <ChevronsRight size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Data Table */}
+      <DataTable
+        columns={columns}
+        data={paginatedData}
+        currentPage={currentPage}
+        totalPages={Math.max(1, Math.ceil(sortedData.length / pageSize))}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        emptyMessage="No orders found"
+        loading={loading}
+      />
     </div>
   )
 }

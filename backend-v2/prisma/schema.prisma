@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+  users           User[]
+}
+
+model Permission {
+  id              Int              @id @default(autoincrement())
+  key             String           @unique
+  name            String
+  rolePermissions RolePermission[]
+  userOverrides   UserPermissionOverride[]
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  roleId       Int
+  permissionId Int
+  enabled      Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model User {
+  id                 Int               @id @default(autoincrement())
+  email              String            @unique
+  password           String
+  roleId             Int
+  firstName          String?
+  lastName           String?
+  mustChangePassword Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  isArchived         Boolean           @default(false)
+  cancelLogs         CancelLog[]       @relation("CancelLogUser")
+  cancelledInvoices  Invoice[]
+  remindersCreated   InvoiceReminder[] @relation("ReminderCreatedBy")
+  payments           Payment[]         @relation("PaymentCreatedBy")
+  role               Role              @relation(fields: [roleId], references: [id])
+  permissionOverrides UserPermissionOverride[]
+}
+
+model Supplier {
+  id           Int       @id @default(autoincrement())
+  name         String
+  email        String
+  phone        String
+  addressLine1 String    @default("")
+  addressLine2 String?
+  area         String    @default("")
+  city         String    @default("")
+  country      String    @default("")
+  postalCode   String    @default("")
+  state        String    @default("")
+  isArchived   Boolean   @default(false)
+  invoices     Invoice[]
+  products     Product[]
+}
+
+model Buyer {
+  id           Int               @id @default(autoincrement())
+  name         String
+  email        String
+  phone        String
+  addressLine1 String            @default("")
+  addressLine2 String?
+  area         String            @default("")
+  city         String            @default("")
+  country      String            @default("")
+  postalCode   String            @default("")
+  state        String            @default("")
+  gstin        String?
+  isArchived   Boolean           @default(false)
+  invoices     Invoice[]
+  proformas    ProformaInvoice[]
+}
+
+model Product {
+  id            Int            @id @default(autoincrement())
+  sku           String         @unique
+  description   String?
+  price         Float
+  stock         Int
+  supplierId    Int?
+  category      String?
+  title         String
+  createdAt     DateTime       @default(now())
+  isArchived    Boolean        @default(false)
+  hsnCode       String?        @default("00000000")
+  taxRate       Float?         @default(18)
+  taxType       String?        @default("withTax")
+  invoiceItems  InvoiceItem[]
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  proformaItems ProformaItem[]
+}
+
+model Invoice {
+  id              Int               @id @default(autoincrement())
+  invoiceNo       String            @unique
+  buyerId         Int
+  supplierId      Int?
+  /// @deprecated Use Payment.method instead. This field is kept for backward compatibility only.
+  /// Do NOT use in business logic. Individual payments have their own methods.
+  paymentMethod   String?
+  total           Float
+  status          String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  balance         Float             @default(0)
+  serviceCharge   Float             @default(0)
+  signature       String?
+  cancelledAt     DateTime?
+  cancelledBy     Int?
+  dueDate         DateTime?
+  invoiceDate     DateTime          @default(now())
+  extraCharges    Json?
+  notes           String?
+  proformaId      Int?              @unique
+  cancelLogs      CancelLog[]
+  buyer           Buyer             @relation(fields: [buyerId], references: [id])
+  cancelledByUser User?             @relation(fields: [cancelledBy], references: [id])
+  proforma        ProformaInvoice?  @relation("InvoiceProforma", fields: [proformaId], references: [id], onUpdate: NoAction)
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
+  items           InvoiceItem[]
+  reminders       InvoiceReminder[]
+  payments        Payment[]
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([invoiceDate])
+}
+
+model ProformaInvoice {
+  id           Int            @id @default(autoincrement())
+  proformaNo   String         @unique
+  buyerId      Int
+  proformaDate DateTime       @default(now()) @db.Timestamp(6)
+  validTill    DateTime?      @db.Timestamp(6)
+  status       String         @default("Draft")
+  total        Float          @default(0)
+  notes        String?
+  terms        String?
+  extraCharges Json?
+  signature    String?
+  createdAt    DateTime       @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+  invoice      Invoice?       @relation("InvoiceProforma")
+  buyer        Buyer          @relation(fields: [buyerId], references: [id], onUpdate: NoAction)
+  items        ProformaItem[]
+}
+
+model ProformaItem {
+  id          Int             @id @default(autoincrement())
+  proformaId  Int
+  productId   Int?
+  title       String
+  description String?
+  qty         Int
+  price       Float
+  gst         Float
+  amount      Float
+  discountPct Float
+  hsnCode     String?
+  product     Product?        @relation(fields: [productId], references: [id])
+  proforma    ProformaInvoice @relation(fields: [proformaId], references: [id], onDelete: Cascade)
+
+  @@index([proformaId])
+}
+
+model InvoiceItem {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  productId   Int?
+  title       String
+  description String?
+  qty         Int
+  price       Float
+  gst         Float
+  amount      Float
+  discountPct Float
+  hsnCode     String?
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  product     Product? @relation(fields: [productId], references: [id])
+}
+
+model InvoiceReminder {
+  id               Int       @id @default(autoincrement())
+  invoiceId        Int
+  toEmail          String
+  sentAt           DateTime?
+  status           String    @default("queued")
+  providerResponse String?
+  createdBy        Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User?     @relation("ReminderCreatedBy", fields: [createdBy], references: [id])
+  invoice          Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model CancelLog {
+  id             Int      @id @default(autoincrement())
+  invoiceId      Int
+  cancelledBy    Int
+  reason         String
+  forceCancelled Boolean  @default(false)
+  cancelledAt    DateTime @default(now())
+  user           User     @relation("CancelLogUser", fields: [cancelledBy], references: [id])
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id         Int      @id @default(autoincrement())
+  invoiceId  Int
+  amount     Float
+  method     String
+  reference  String?
+  receivedAt DateTime @default(now())
+  createdBy  Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  roundOff   Float    @default(0)
+  user       User?    @relation("PaymentCreatedBy", fields: [createdBy], references: [id])
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([receivedAt])
+}
+
+enum UserPermissionMode {
+  GRANT
+  DENY
+}
+
+model UserPermissionOverride {
+  id           Int                @id @default(autoincrement())
+  userId       Int
+  permissionId Int
+  mode         UserPermissionMode
+  createdAt    DateTime           @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+}

@@ -1,4 +1,5 @@
 import React from 'react'
+import { CheckCircle2, Check } from 'lucide-react'
 
 interface FinalizeInvoiceModalProps {
     isOpen: boolean
@@ -19,10 +20,8 @@ const FinalizeInvoiceModal: React.FC<FinalizeInvoiceModalProps> = ({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="flex-shrink-0">
-                        <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                    <div className="flex-shrink-0 text-green-600">
+                        <CheckCircle2 size={32} strokeWidth={1.8} />
                     </div>
                     <div>
                         <h3 className="text-lg font-semibold text-gray-900">Finalize Draft Invoice</h3>
@@ -61,9 +60,7 @@ const FinalizeInvoiceModal: React.FC<FinalizeInvoiceModalProps> = ({
                         }}
                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors flex items-center gap-2"
                     >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                        <Check size={16} strokeWidth={1.8} />
                         Finalize Invoice
                     </button>
                 </div>

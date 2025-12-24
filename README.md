@@ -55,6 +55,7 @@ Frontend runs at http://localhost:5173
 
 ## Default Credentials
 
+
 - ceo@company.com / Super@123 (SuperAdmin)
 - admin.team@company.com / Admin@123 (Admin)
 - staff@company.com / Emp@123 (Employee)

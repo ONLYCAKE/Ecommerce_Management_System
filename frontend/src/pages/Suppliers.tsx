@@ -3,13 +3,13 @@ import api from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { canCreate, canUpdate, canDelete, canRead } from "../utils/permissions";
 import { useConfirm } from "../context/ConfirmContext";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-} from "lucide-react";
+import { Pencil, Trash2, Archive, RotateCcw, Save, ArrowLeft, FileText, Phone, Home, AlertTriangle, Plus, Truck, MapPin, TrendingUp, Package } from "lucide-react";
 import CountryStateCitySelect from '../components/common/CountryStateCitySelect';
+import DataTable, { Column } from '../components/common/DataTable';
+import SummaryCards, { SummaryCard } from '../components/common/SummaryCards';
+import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchAndFilterBar';
+import TableActions, { ActionButton } from '../components/common/TableActions';
+import { useTableSort, useTablePagination } from '../hooks/useTableFeatures';
 
 interface Supplier {
   id: number;
@@ -17,18 +17,19 @@ interface Supplier {
   email: string;
   phone: string;
   address: string;
+  addressLine1?: string;
+  city?: string;
+  state?: string;
+  createdAt?: string;
+  isArchived?: boolean;
 }
 
 export default function Suppliers() {
   const [items, setItems] = useState<Supplier[]>([]);
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [archived, setArchived] = useState(false);
-
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -41,16 +42,11 @@ export default function Suppliers() {
     country: "",
     postalCode: ""
   });
-
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
-
   const { user } = useAuth();
   const confirmModal = useConfirm();
 
-  /* ------------------------------------------------------------
-     READ PERMISSION PROTECTION
-  ------------------------------------------------------------ */
   if (!canRead("supplier")) {
     return (
       <div className="p-6 text-center text-gray-500">
@@ -59,42 +55,69 @@ export default function Suppliers() {
     );
   }
 
-  /* ------------------------------------------------------------
-     Load All Suppliers
-  ------------------------------------------------------------ */
   const fetchAll = async () => {
     try {
       const { data } = await api.get("/suppliers", { params: { archived } });
-      setItems(data);
+      setItems(Array.isArray(data) ? data : (data?.items || []));
     } catch (err) {
       console.error("Error loading suppliers", err);
       setItems([]);
     }
   };
 
-  useEffect(() => {
-    fetchAll();
-  }, [archived]);
+  useEffect(() => { fetchAll(); }, [archived]);
 
-  /* ------------------------------------------------------------
-     Search + Filter
-  ------------------------------------------------------------ */
+  // Filter by search
   const filtered = useMemo(() => {
     return (items || []).filter((s) =>
-      [s.name, s.email, s.phone, s.address]
+      [s.name, s.email, s.phone, s.address, (s as any).city, (s as any).state]
         .join(" ")
         .toLowerCase()
         .includes(q.toLowerCase())
     );
   }, [q, items]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const start = (page - 1) * pageSize;
-  const currentPageData = filtered.slice(start, start + pageSize);
+  // Apply sorting
+  const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(filtered);
 
-  /* ------------------------------------------------------------
-     Open Form
-  ------------------------------------------------------------ */
+  // Pagination
+  const { currentPage, pageSize, paginatedData, setPage, setPageSize } = useTablePagination(sortedData, 10);
+
+  // Summary cards
+  const summaryCards: SummaryCard[] = useMemo(() => {
+    const totalSuppliers = items.filter(s => !(s as any).isArchived).length;
+    const archivedCount = items.filter(s => (s as any).isArchived).length;
+
+    return [
+      {
+        title: 'Total Suppliers',
+        value: totalSuppliers,
+        icon: Truck,
+        color: 'green',
+        subtitle: `${items.length} including archived`
+      },
+      {
+        title: 'Active Suppliers',
+        value: totalSuppliers,
+        icon: TrendingUp,
+        color: 'blue'
+      },
+      {
+        title: 'Archived',
+        value: archivedCount,
+        icon: Archive,
+        color: 'orange'
+      },
+      {
+        title: 'Total Locations',
+        value: new Set(items.map(s => (s as any).city).filter(Boolean)).size,
+        icon: MapPin,
+        color: 'purple',
+        subtitle: 'Unique cities'
+      }
+    ];
+  }, [items]);
+
   const open = (supplier: Supplier | null = null) => {
     setEditing(supplier);
     setErrors({});
@@ -117,35 +140,22 @@ export default function Suppliers() {
     setShowForm(true);
   };
 
-  /* ------------------------------------------------------------
-     Validation
-  ------------------------------------------------------------ */
   const validate = () => {
     const errs: Record<string, string> = {};
-
     if (!form.name.trim()) errs.name = "Name is required";
-
     if (!form.email) errs.email = "Email is required";
     else if (!/^[a-z0-9._%+-]+@gmail\.com$/.test(form.email))
       errs.email = "Email must end with @gmail.com";
-
     if (!form.phone) errs.phone = "Phone number is required";
     else if (!/^\d{10}$/.test(form.phone))
       errs.phone = "Phone must be 10 digits";
-
-    // Address fields are optional
-
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  /* ------------------------------------------------------------
-     Save Supplier
-  ------------------------------------------------------------ */
   const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-
     try {
       if (editing) {
         if (!canUpdate("supplier")) return;
@@ -154,7 +164,6 @@ export default function Suppliers() {
         if (!canCreate("supplier")) return;
         await api.post(`/suppliers`, form);
       }
-
       setShowForm(false);
       fetchAll();
     } catch (err) {
@@ -162,18 +171,13 @@ export default function Suppliers() {
     }
   };
 
-  /* ------------------------------------------------------------
-     Archive/Delete/Restore Supplier
-  ------------------------------------------------------------ */
   const archiveSupplier = async (id: number) => {
     if (!canDelete("supplier")) return;
-
     const ok = await confirmModal({
       title: "Archive supplier?",
       description: "This will archive the supplier. You can restore it later from the archived view.",
     });
     if (!ok) return;
-
     try {
       await api.delete(`/suppliers/${id}`);
       setToast("✅ Supplier archived");
@@ -183,19 +187,16 @@ export default function Suppliers() {
       const msg = err?.response?.data?.message || "Archive failed";
       setToast(`⚠️ ${msg}`);
       setTimeout(() => setToast(null), 2500);
-      console.error("❌ Archive failed", err);
     }
   };
 
   const deleteSupplier = async (id: number) => {
     if (!canDelete("supplier")) return;
-
     const ok = await confirmModal({
       title: "Permanently delete supplier?",
       description: "This action cannot be undone. The supplier will be permanently removed from the database.",
     });
     if (!ok) return;
-
     try {
       await api.delete(`/suppliers/${id}/permanent`);
       setToast("✅ Supplier deleted");
@@ -205,19 +206,16 @@ export default function Suppliers() {
       const msg = err?.response?.data?.message || "Delete failed";
       setToast(`⚠️ ${msg}`);
       setTimeout(() => setToast(null), 2500);
-      console.error("❌ Delete failed", err);
     }
   };
 
   const restoreSupplier = async (id: number) => {
     if (!canUpdate("supplier")) return;
-
     const ok = await confirmModal({
       title: "Restore supplier?",
       description: "This will unarchive the supplier and make them active again.",
     });
     if (!ok) return;
-
     try {
       await api.patch(`/suppliers/${id}/restore`, {});
       setToast("✅ Supplier restored");
@@ -227,234 +225,177 @@ export default function Suppliers() {
       const msg = err?.response?.data?.message || "Restore failed";
       setToast(`⚠️ ${msg}`);
       setTimeout(() => setToast(null), 2500);
-      console.error("❌ Restore failed", err);
     }
   };
 
-  /* ------------------------------------------------------------
-     UI
-  ------------------------------------------------------------ */
+  // Define table columns
+  const columns: Column<Supplier>[] = [
+    {
+      key: 'name',
+      label: 'Name',
+      sortable: true,
+      align: 'left',
+      render: (row: Supplier) => (
+        <span className="font-semibold text-gray-900">{row.name}</span>
+      )
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      sortable: true,
+      align: 'left',
+      render: (row: Supplier) => (
+        <span className="text-gray-600">{row.email}</span>
+      )
+    },
+    {
+      key: 'phone',
+      label: 'Contact',
+      sortable: false,
+      align: 'left',
+      render: (row: Supplier) => (
+        <span className="font-medium text-gray-700">{row.phone}</span>
+      )
+    },
+    {
+      key: 'location',
+      label: 'Location',
+      sortable: false,
+      align: 'left',
+      render: (row: Supplier) => {
+        const city = (row as any).city || '';
+        const state = (row as any).state || '';
+        const location = [city, state].filter(Boolean).join(', ') || '-';
+
+        // Full address for tooltip
+        const fullAddress = [
+          (row as any).addressLine1,
+          (row as any).addressLine2,
+          (row as any).area,
+          city,
+          state,
+          (row as any).postalCode,
+          (row as any).country
+        ].filter(Boolean).join(', ');
+
+        return (
+          <span className="text-gray-600 text-sm" title={fullAddress || row.address}>
+            {location}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'createdAt',
+      label: 'Created',
+      sortable: true,
+      align: 'left',
+      render: (row: Supplier) => (
+        <span className="text-xs text-gray-500">
+          {row.createdAt ? new Date(row.createdAt).toLocaleDateString('en-GB') : '-'}
+        </span>
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (row: Supplier) => {
+        const actions: ActionButton[] = [
+          {
+            label: 'Edit',
+            icon: Pencil,
+            onClick: () => open(row),
+            color: 'blue',
+            show: canUpdate("supplier") && !archived
+          },
+          {
+            label: 'Delete',
+            icon: Trash2,
+            onClick: () => deleteSupplier(row.id),
+            color: 'red',
+            show: canDelete("supplier") && !archived
+          },
+          {
+            label: 'Archive',
+            icon: Archive,
+            onClick: () => archiveSupplier(row.id),
+            color: 'orange',
+            show: canDelete("supplier") && !archived
+          },
+          {
+            label: 'Restore',
+            icon: RotateCcw,
+            onClick: () => restoreSupplier(row.id),
+            color: 'green',
+            show: canUpdate("supplier") && archived
+          }
+        ];
+        return <TableActions actions={actions} />;
+      }
+    }
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <input
-              className="input pl-10 pr-4 py-2.5 w-80 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              placeholder="Search suppliers by name, email, or phone..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <svg className="absolute left-3 top-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+      {/* Summary Cards */}
+      <SummaryCards cards={summaryCards} />
 
-          {/* Checkbox for Archived Suppliers */}
-          <label className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-all">
-            <input
-              type="checkbox"
-              checked={archived}
-              onChange={(e) => setArchived(e.target.checked)}
-              className="w-4 h-4 text-orange-600 rounded focus:ring-2 focus:ring-orange-500 cursor-pointer"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              {archived ? '📦 Showing Archived' : 'Show Archived'}
-            </span>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-4">
-          {canCreate("supplier") && (
-            <button
-              className="btn-primary px-5 py-2.5 font-medium shadow-sm hover:shadow-md transition-all flex items-center gap-2"
-              onClick={() => open(null)}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+      {/* Search and Filter Bar */}
+      <SearchAndFilterBar
+        searchValue={q}
+        onSearchChange={setQ}
+        searchPlaceholder="Search suppliers by name, email, phone, or location..."
+        filters={
+          <FilterCheckbox
+            label={archived ? 'Showing Archived' : 'Show Archived'}
+            checked={archived}
+            onChange={setArchived}
+            icon={archived && <Archive size={16} strokeWidth={1.8} />}
+          />
+        }
+        actions={
+          canCreate("supplier") && (
+            <button className="btn-primary flex items-center gap-2" onClick={() => open(null)}>
+              <Plus size={18} strokeWidth={1.8} />
               Add Supplier
             </button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      {/* Table */}
-      <div className="card p-6 shadow-sm">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">No</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact No</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Address</th>
-              <th className="pb-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Created Date</th>
-              <th className="pb-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
+      {/* Data Table */}
+      <DataTable
+        columns={columns}
+        data={paginatedData}
+        currentPage={currentPage}
+        totalPages={Math.max(1, Math.ceil(sortedData.length / pageSize))}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        emptyMessage={archived ? "No archived suppliers found" : "No suppliers found"}
+      />
 
-          <tbody className="divide-y divide-gray-100">
-            {currentPageData.map((s, index) => {
-              const fullAddress = [
-                (s as any).addressLine1,
-                (s as any).addressLine2,
-                (s as any).area,
-                (s as any).city,
-                (s as any).state,
-                (s as any).postalCode,
-                (s as any).country
-              ].filter(Boolean).join(', ')
-
-              return (
-                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="py-4 text-sm font-medium text-gray-500">
-                    {(page - 1) * pageSize + index + 1}
-                  </td>
-                  <td className="py-4">
-                    <div className="text-sm font-semibold text-gray-900">{s.name}</div>
-                  </td>
-                  <td className="py-4">
-                    <div className="text-sm text-gray-600">{s.email}</div>
-                  </td>
-                  <td className="py-4">
-                    <div className="text-sm font-medium text-gray-700">{s.phone}</div>
-                  </td>
-                  <td className="py-4 max-w-xs">
-                    <div className="text-sm text-gray-600 line-clamp-2">
-                      {fullAddress || s.address || '-'}
-                    </div>
-                  </td>
-                  <td className="py-4">
-                    <div className="text-sm text-gray-500">
-                      {(s as any).createdAt ? new Date((s as any).createdAt).toLocaleDateString('en-GB') : '09/12/2025'}
-                    </div>
-                  </td>
-
-                  <td className="py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      {!archived && canUpdate("supplier") && (
-                        <button
-                          className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                          onClick={() => open(s)}
-                        >
-                          Edit
-                        </button>
-                      )}
-
-                      {!archived && canDelete("supplier") && (
-                        <button
-                          className="px-3 py-1.5 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                          onClick={() => deleteSupplier(s.id)}
-                        >
-                          Delete
-                        </button>
-                      )}
-
-                      {!archived && canDelete("supplier") && (
-                        <button
-                          className="px-3 py-1.5 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors"
-                          onClick={() => archiveSupplier(s.id)}
-                        >
-                          Archive
-                        </button>
-                      )}
-
-                      {archived && canUpdate("supplier") && (
-                        <button
-                          className="px-3 py-1.5 text-sm font-medium text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
-                          onClick={() => restoreSupplier(s.id)}
-                        >
-                          Restore
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-
-            {currentPageData.length === 0 && (
-              <tr>
-                <td className="text-center py-6 text-gray-500" colSpan={7}>
-                  No suppliers found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        {filtered.length > 0 && (
-          <div className="mt-4 flex justify-end">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-600">Rows per page:</label>
-                <select
-                  className="input px-3 py-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setPage(1);
-                  }}
-                >
-                  {[3, 5, 10, 20].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <span className="text-sm text-gray-600">
-                Page {page} of {totalPages}
-              </span>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
-                disabled={page === 1}
-                onClick={() => setPage(1)}
-              >
-                <ChevronsLeft size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
-                disabled={page === 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                <ChevronRight size={18} />
-              </button>
-
-              <button
-                className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
-                disabled={page >= totalPages}
-                onClick={() => setPage(totalPages)}
-              >
-                <ChevronsRight size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Modal Form */}
+      {/* Modal Form - Keep Existing */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
             <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 text-white px-8 py-6 rounded-t-xl">
-              <h3 className="text-2xl font-bold">
-                {editing ? '✏️ Edit Supplier' : '➕ Add New Supplier'}
+              <h3 className="text-2xl font-bold flex items-center gap-2">
+                {editing ? (
+                  <>
+                    <Pencil size={20} strokeWidth={1.8} />
+                    Edit Supplier
+                  </>
+                ) : (
+                  <>
+                    <Plus size={20} strokeWidth={1.8} />
+                    Add New Supplier
+                  </>
+                )}
               </h3>
               <p className="text-green-100 text-sm mt-1">
                 {editing ? 'Update supplier information' : 'Fill in the details to create a new supplier'}
@@ -462,12 +403,12 @@ export default function Suppliers() {
             </div>
 
             <form onSubmit={save} className="p-8">
-              {/* Sections */}
               <div className="space-y-6">
                 {/* Basic Information */}
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-green-500 flex items-center gap-2">
-                    <span>📋</span> Basic Information
+                    <FileText size={18} strokeWidth={1.8} />
+                    Basic Information
                   </h4>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
@@ -482,7 +423,8 @@ export default function Suppliers() {
                       />
                       {errors.name && (
                         <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
-                          <span>⚠️</span> {errors.name}
+                          <AlertTriangle size={14} strokeWidth={1.8} />
+                          {errors.name}
                         </p>
                       )}
                     </div>
@@ -492,7 +434,8 @@ export default function Suppliers() {
                 {/* Contact Information */}
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-blue-500 flex items-center gap-2">
-                    <span>📞</span> Contact Information
+                    <Phone size={18} strokeWidth={1.8} />
+                    Contact Information
                   </h4>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
@@ -508,7 +451,8 @@ export default function Suppliers() {
                       />
                       {errors.email && (
                         <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
-                          <span>⚠️</span> {errors.email}
+                          <AlertTriangle size={14} strokeWidth={1.8} />
+                          {errors.email}
                         </p>
                       )}
                     </div>
@@ -526,7 +470,8 @@ export default function Suppliers() {
                       />
                       {errors.phone && (
                         <p className="text-red-600 text-xs mt-1 flex items-center gap-1">
-                          <span>⚠️</span> {errors.phone}
+                          <AlertTriangle size={14} strokeWidth={1.8} />
+                          {errors.phone}
                         </p>
                       )}
                     </div>
@@ -536,7 +481,8 @@ export default function Suppliers() {
                 {/* Address Section */}
                 <div>
                   <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2 border-purple-500 flex items-center gap-2">
-                    <span>🏠</span> Address Details
+                    <Home size={18} strokeWidth={1.8} />
+                    Address Details
                   </h4>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -620,13 +566,15 @@ export default function Suppliers() {
                     className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 flex items-center gap-2"
                     onClick={() => setShowForm(false)}
                   >
-                    <span>✕</span> Cancel
+                    <ArrowLeft size={18} strokeWidth={1.8} className="mr-1" />
+                    Cancel
                   </button>
                   <button
                     type="submit"
                     className="px-8 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
                   >
-                    <span>💾</span> {editing ? 'Update Supplier' : 'Save Supplier'}
+                    <Save size={18} strokeWidth={1.8} className="mr-1" />
+                    {editing ? 'Update Supplier' : 'Save Supplier'}
                   </button>
                 </div>
               </div>

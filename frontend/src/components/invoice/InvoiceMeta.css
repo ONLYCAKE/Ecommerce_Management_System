@@ -97,12 +97,31 @@
 }
 
 /* Clear button */
+.react-datepicker__close-icon {
+    position: absolute;
+    inset-inline-end: 0.5rem; /* right in LTR, left in RTL */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
 .react-datepicker__close-icon::after {
     background-color: #6b7280;
-    border-radius: 50%;
-    font-size: 1rem;
+    color: #f9fafb;
+    border-radius: 9999px;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
     line-height: 1;
-    padding: 0.125rem;
+    padding: 0;
 }
 
 .react-datepicker__close-icon:hover::after {

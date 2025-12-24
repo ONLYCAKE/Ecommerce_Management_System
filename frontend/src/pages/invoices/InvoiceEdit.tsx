@@ -10,19 +10,22 @@ import SignaturePanel from '../../components/invoice/SignaturePanel'
 import ExtraChargesPanel, { ExtraCharge } from '../../components/invoice/ExtraChargesPanel'
 import NotesPanel from '../../components/invoice/NotesPanel'
 import { InvoiceItem, useInvoiceTotals } from '../../hooks/useInvoiceTotals'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 
 interface Customer {
     id: number
     name: string
     email: string
     phone: string
-    addressLine1?: string
+    gstin?: string
+    addressLine1: string
     addressLine2?: string
-    area?: string
-    city?: string
-    state?: string
-    country?: string
-    postalCode?: string
+    area: string
+    city: string
+    state: string
+    country: string
+    postalCode: string
 }
 
 interface Product {
@@ -39,11 +42,12 @@ interface Product {
 interface Payment {
     id?: string
     amount: number
+    roundOff?: number
     mode: string
-    notes: string
+    note: string
 }
 
-type InvoiceViewMode = 'normal' | 'full' | 'split'
+type InvoiceViewMode = 'default' | 'full'
 
 export default function InvoiceEdit() {
     const { invoiceNo } = useParams<{ invoiceNo: string }>()
@@ -51,19 +55,19 @@ export default function InvoiceEdit() {
 
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
-    const [invoiceDate, setInvoiceDate] = useState('')
-    const [dueDate, setDueDate] = useState('')
+    const [invoiceDate, setInvoiceDate] = useState<Date | null>(null)
+    const [dueDate, setDueDate] = useState<Date | null>(null)
     const [reference, setReference] = useState('')
     const [customer, setCustomer] = useState<Customer | null>(null)
     const [items, setItems] = useState<InvoiceItem[]>([])
     const [globalDiscountPct, setGlobalDiscountPct] = useState(0)
     const [notes, setNotes] = useState('')
     const [payments, setPayments] = useState<Payment[]>([])
-    const [signature, setSignature] = useState('')
+    const [signature, setSignature] = useState<string | null>(null)
     const [errors, setErrors] = useState<Record<string, string>>({})
 
     // Layout / view mode (UI-only)
-    const [viewMode, setViewMode] = useState<InvoiceViewMode>('normal')
+    const [viewMode, setViewMode] = useState<InvoiceViewMode>('default')
 
     // NEW: Column visibility state (matches InvoiceCreate)
     const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
@@ -91,15 +95,13 @@ export default function InvoiceEdit() {
             try {
                 const { data } = await api.get(`/invoices/${invoiceNo}`)
 
-                // Set basic fields
-                const loadedInvoiceDate = data.invoiceDate ? new Date(data.invoiceDate).toISOString().split('T')[0] : ''
-                const loadedDueDate = data.dueDate ? new Date(data.dueDate).toISOString().split('T')[0] : ''
+                // Set basic fields - use Date objects for DatePicker
+                const loadedInvoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null
+                const loadedDueDate = data.dueDate ? new Date(data.dueDate) : null
 
                 // Auto-fill invoice date with current date if empty
                 if (!loadedInvoiceDate) {
-                    const now = new Date()
-                    const localDate = now.toISOString().split('T')[0] // YYYY-MM-DD format
-                    setInvoiceDate(localDate)
+                    setInvoiceDate(new Date())
                 } else {
                     setInvoiceDate(loadedInvoiceDate)
                 }
@@ -192,10 +194,10 @@ export default function InvoiceEdit() {
         try {
             const payload = {
                 buyerId: customer!.id,
-                invoiceDate,
-                dueDate,
+                invoiceDate: invoiceDate?.toISOString().split('T')[0] || '',
+                dueDate: dueDate?.toISOString().split('T')[0] || '',
                 reference,
-                status,
+                // Do not send status field when editing – backend calculates it from payments
                 items: items.map(item => ({
                     productId: item.productId,
                     title: item.title,
@@ -245,8 +247,7 @@ export default function InvoiceEdit() {
     return (
         <div
             className={
-                `min-h-screen transition-all duration-300 ${
-                    viewMode === 'full' ? 'bg-slate-900/5' : 'bg-gray-50'
+                `min-h-screen transition-all duration-300 ${viewMode === 'full' ? 'bg-slate-900/5' : 'bg-gray-50'
                 }`
             }
         >
@@ -266,15 +267,15 @@ export default function InvoiceEdit() {
                         </div>
                         <div className="flex gap-3 items-center">
                             {/* View mode toggle */}
-                            <div className="hidden md:flex items-center gap-1 rounded-full bg-gray-100 px-1 py-0.5 shadow-inner">
+                            {/* View mode toggle */}
+                            <div className="hidden md:flex w-64 items-center bg-gray-100 rounded-full p-1 shadow-inner">
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('normal')}
+                                    onClick={() => setViewMode('default')}
                                     className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'normal'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
+                                        `flex-1 text-center justify-center py-1.5 text-xs font-medium rounded-full transition-all ${viewMode === 'default'
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
                                         }`
                                     }
                                 >
@@ -282,29 +283,15 @@ export default function InvoiceEdit() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('split')}
-                                    className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'split'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
-                                        }`
-                                    }
-                                >
-                                    Split
-                                </button>
-                                <button
-                                    type="button"
                                     onClick={() => setViewMode('full')}
                                     className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'full'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
+                                        `flex-1 text-center justify-center py-1.5 text-xs font-medium rounded-full transition-all ${viewMode === 'full'
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
                                         }`
                                     }
                                 >
-                                    Focus
+                                    Full Screen
                                 </button>
                             </div>
 
@@ -340,42 +327,25 @@ export default function InvoiceEdit() {
             </div>
 
             {/* Main Content */}
-            <div
-                className={
-                    `mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-6xl transition-all duration-300 ${
-                        viewMode === 'normal'
-                            ? ''
-                            : 'bg-white rounded-2xl shadow-xl border border-gray-100'
-                    }`
-                }
-            >
-                {errors.general && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-                        {errors.general}
-                    </div>
-                )}
-
+            <div className="pb-64"> {/* Bottom padding for fixed bar */}
                 <div
                     className={
-                        `grid gap-6 transition-all duration-300 ${
-                            viewMode === 'split'
-                                ? 'grid-cols-1 xl:grid-cols-2'
-                                : 'grid-cols-1 lg:grid-cols-3'
+                        `transition-all duration-300 py-6 ${viewMode === 'full'
+                            ? 'w-full max-w-none px-4 sm:px-8 lg:px-10'
+                            : 'max-w-5xl mx-auto px-4 sm:px-6'
                         }`
                     }
                 >
-                    {/* Left Column (2/3 width) */}
-                    <div
-                        className={
-                            `space-y-6 ${
-                                viewMode === 'split'
-                                    ? ''
-                                    : 'lg:col-span-2'
-                            }`
-                        }
-                    >
+                    {errors.general && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                            {errors.general}
+                        </div>
+                    )}
+
+                    {/* Form Sections - Full Width */}
+                    <div className="space-y-5">
                         {/* Customer Selection */}
-                        <div className="card p-6">
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                             <CustomerSelect
                                 value={customer}
                                 onChange={setCustomer}
@@ -384,41 +354,46 @@ export default function InvoiceEdit() {
                         </div>
 
                         {/* Invoice Meta */}
-                        <div className="card p-6">
-                            <h3 className="font-semibold text-gray-800 mb-4">Invoice Details</h3>
-                            <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                            <h3 className="text-sm font-semibold text-blue-700 mb-4">Invoice Details</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Invoice Date *
                                     </label>
-                                    <input
-                                        type="date"
+                                    <DatePicker
+                                        selected={invoiceDate}
+                                        onChange={(date) => setInvoiceDate(date)}
+                                        dateFormat="dd/MM/yyyy"
                                         className="input w-full"
-                                        value={invoiceDate}
-                                        onChange={(e) => setInvoiceDate(e.target.value)}
+                                        placeholderText="Select invoice date"
+                                        isClearable
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Due Date *
                                     </label>
-                                    <input
-                                        type="date"
+                                    <DatePicker
+                                        selected={dueDate}
+                                        onChange={(date) => setDueDate(date)}
+                                        dateFormat="dd/MM/yyyy"
                                         className="input w-full"
-                                        value={dueDate}
-                                        onChange={(e) => setDueDate(e.target.value)}
+                                        placeholderText="Select due date"
+                                        minDate={invoiceDate ?? undefined}
+                                        isClearable
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        Reference
+                                        Reference Number
                                     </label>
                                     <input
                                         type="text"
                                         className="input w-full"
                                         value={reference}
                                         onChange={(e) => setReference(e.target.value)}
-                                        placeholder="PO number, etc."
+                                        placeholder="Optional"
                                     />
                                 </div>
                             </div>
@@ -431,9 +406,9 @@ export default function InvoiceEdit() {
                         />
 
                         {/* Invoice Table */}
-                        <div className="card p-6">
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-semibold text-gray-800">Items</h3>
+                                <h3 className="text-sm font-semibold text-blue-700">Product Details</h3>
                             </div>
                             <InvoiceTable
                                 items={items}
@@ -445,68 +420,111 @@ export default function InvoiceEdit() {
                             {errors.items && <p className="text-red-600 text-sm mt-2">{errors.items}</p>}
                         </div>
 
-                        {/* Extra Charges & Notes */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <ExtraChargesPanel
-                                charges={extraCharges}
-                                onChange={setExtraCharges}
-                                enabled={extraChargesEnabled}
-                                onToggle={setExtraChargesEnabled}
-                            />
-                            <NotesPanel
-                                notes={notes}
-                                onChange={setNotes}
-                                enabled={notesEnabled}
-                                onToggle={setNotesEnabled}
-                            />
-                        </div>
+                        {/* Extra Charges */}
+                        <ExtraChargesPanel
+                            charges={extraCharges}
+                            onChange={setExtraCharges}
+                            enabled={extraChargesEnabled}
+                            onToggle={setExtraChargesEnabled}
+                        />
 
-                        {/* Terms & Conditions */}
-                        <div className="card p-6">
-                            <h3 className="font-semibold text-gray-800 mb-3">Terms & Conditions</h3>
-                            <div className="bg-gray-50 border border-gray-200 rounded p-4 text-sm text-gray-700 space-y-2">
-                                <p className="font-medium">Terms And Conditions</p>
-                                <p>1) Goods once sold will not be taken back or exchange.</p>
-                                <p>2) We are not responsible for damage, shortage or breakage after despatched from our premises.</p>
-                                <p>3) We are not responsible for given guarantee or warranty by the principle of electric & electronics items.</p>
-                                <p>4) Subject to Ahmedabad Jurisdiction. [E&OE]</p>
+                        {/* Comments / Notes */}
+                        <NotesPanel
+                            notes={notes}
+                            onChange={setNotes}
+                            enabled={notesEnabled}
+                            onToggle={setNotesEnabled}
+                        />
+
+                        {/* Bottom Section: Payments, Signature & Summary */}
+                        <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mt-8">
+                            <div className="grid gap-6 lg:grid-cols-2">
+                                {/* Left: Signature + Payments */}
+                                <div className="space-y-4">
+                                    <SignaturePanel signature={signature} onChange={setSignature} />
+
+                                    <PaymentPanel
+                                        payments={payments}
+                                        onChange={setPayments}
+                                        grandTotal={totals.grandTotal}
+                                    />
+                                </div>
+
+                                {/* Right: Summary */}
+                                <div>
+                                    <h4 className="text-sm font-semibold text-gray-700 mb-3 text-right">Invoice Summary</h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between text-gray-600">
+                                            <span>Subtotal</span>
+                                            <span className="font-medium text-gray-800">₹{totals.subtotal.toFixed(2)}</span>
+                                        </div>
+                                        {isSameState ? (
+                                            <>
+                                                <div className="flex justify-between text-gray-500">
+                                                    <span>CGST</span>
+                                                    <span>₹{(totals.cgst || 0).toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-gray-500">
+                                                    <span>SGST</span>
+                                                    <span>₹{(totals.sgst || 0).toFixed(2)}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between text-gray-500">
+                                                <span>IGST</span>
+                                                <span>₹{(totals.igst || 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        {extraChargesEnabled && extraCharges.length > 0 && (
+                                            <div className="flex justify-between text-gray-500">
+                                                <span>Extra Charges</span>
+                                                <span className="text-amber-600">₹{extraCharges.reduce((s, c) => s + (c.amount || 0), 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between pt-3 border-t border-gray-300">
+                                            <span className="font-semibold text-gray-800">Total</span>
+                                            <span className="font-bold text-lg text-green-600">₹{(totals.grandTotal + (extraChargesEnabled ? extraCharges.reduce((s, c) => s + (c.amount || 0), 0) : 0)).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Payment Summary */}
+                                    <div className="mt-4 pt-3 border-t border-gray-200">
+                                        <div className="flex justify-between text-sm text-gray-600">
+                                            <span>Received</span>
+                                            <span className="font-medium text-green-600">₹{payments.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Balance</span>
+                                            <span className={`font-semibold ${(totals.grandTotal - payments.reduce((sum, p) => sum + (p.amount || 0), 0)) > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                                                ₹{(totals.grandTotal - payments.reduce((sum, p) => sum + (p.amount || 0), 0)).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Right Column (1/3 width - Sticky) */}
-                    <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-                        {/* Totals Panel */}
-                        <TotalsPanel
-                            totals={totals}
-                            isSameState={isSameState}
-                            extraCharges={extraCharges}
-                            extraChargesEnabled={extraChargesEnabled}
-                        />
-
-                        {/* Payment Panel */}
-                        <PaymentPanel
-                            payments={payments}
-                            onChange={setPayments}
-                            grandTotal={totals.grandTotal}
-                        />
-
-                        {/* Signature Panel */}
-                        <SignaturePanel signature={signature} onChange={setSignature} />
-
-                        {/* Save Buttons (Duplicate for sticky sidebar) */}
-                        <div className="space-y-2">
+                        {/* Action Buttons - Bottom */}
+                        <div className="flex justify-end items-center gap-3 pt-4 pb-8">
                             <button
                                 type="button"
-                                className="btn-secondary w-full"
-                                onClick={() => handleSave('Draft')}
+                                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                onClick={() => navigate('/invoices')}
                                 disabled={saving}
                             >
-                                Save as Draft
+                                Cancel
                             </button>
                             <button
                                 type="button"
-                                className="btn-secondary w-full"
+                                className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                onClick={() => handleSave('Draft')}
+                                disabled={saving}
+                            >
+                                Save Draft
+                            </button>
+                            <button
+                                type="button"
+                                className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                                 onClick={() => handleSave('Processing', true)}
                                 disabled={saving}
                             >
@@ -514,11 +532,12 @@ export default function InvoiceEdit() {
                             </button>
                             <button
                                 type="button"
-                                className="btn-primary w-full"
+                                className="px-6 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
                                 onClick={() => handleSave('Processing')}
                                 disabled={saving}
                             >
-                                {saving ? 'Saving...' : 'Save Invoice →'}
+                                {saving ? 'Saving...' : 'Save Invoice'}
+                                <span>→</span>
                             </button>
                         </div>
                     </div>

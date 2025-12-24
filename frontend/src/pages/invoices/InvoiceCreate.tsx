@@ -39,7 +39,7 @@ interface Product {
 
 const SELLER_STATE = 'Gujarat'
 
-type InvoiceViewMode = 'normal' | 'full' | 'split'
+type InvoiceViewMode = 'default' | 'full'
 
 export default function InvoiceCreate() {
     const navigate = useNavigate()
@@ -62,7 +62,7 @@ export default function InvoiceCreate() {
     const [errors, setErrors] = useState<Record<string, string>>({})
 
     // Layout / view mode (UI-only)
-    const [viewMode, setViewMode] = useState<InvoiceViewMode>('normal')
+    const [viewMode, setViewMode] = useState<InvoiceViewMode>('default')
 
     // Column visibility state
     const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({
@@ -115,16 +115,18 @@ export default function InvoiceCreate() {
         setItems([...items, newItem])
     }
 
-    // Validation - drafts require minimal data, final saves require all fields
+    // Validation - drafts allow skipping items/dates, but backend always requires buyer
     const validate = (isDraft: boolean = false) => {
         const errs: Record<string, string> = {}
 
         // Always require invoice number
         if (!invoiceNo.trim()) errs.invoiceNo = 'Invoice number is required'
 
+        // Backend requires buyer even for drafts
+        if (!customer) errs.customer = 'Customer is required'
+
         // For non-draft saves, require all fields
         if (!isDraft) {
-            if (!customer) errs.customer = 'Customer is required'
             if (items.length === 0) errs.items = 'At least one item is required'
             if (!invoiceDate) errs.invoiceDate = 'Invoice date is required'
 
@@ -165,6 +167,9 @@ export default function InvoiceCreate() {
                 paymentTime: formattedPaymentTime,
                 reference,
                 status,
+                subtotal: totals.subtotal,
+                tax: totals.totalTax,
+                total: totals.grandTotal,
                 items: items.map(item => ({
                     productId: item.productId,
                     title: item.title,
@@ -173,7 +178,8 @@ export default function InvoiceCreate() {
                     price: item.unitPrice,
                     gst: item.taxRate,
                     discountPct: item.discount,
-                    hsnCode: item.hsnCode
+                    hsnCode: item.hsnCode,
+                    amount: item.qty * item.unitPrice * (1 - item.discount / 100) * (1 + item.taxRate / 100)
                 })),
                 notes: notesEnabled ? notes : null,
                 // Extra charges (only if enabled and has charges)
@@ -214,8 +220,7 @@ export default function InvoiceCreate() {
     return (
         <div
             className={
-                `min-h-screen transition-all duration-300 ${
-                    viewMode === 'full' ? 'bg-slate-900/5' : 'bg-gray-50'
+                `min-h-screen transition-all duration-300 ${viewMode === 'full' ? 'bg-slate-900/5' : 'bg-gray-50'
                 }`
             }
         >
@@ -239,15 +244,15 @@ export default function InvoiceCreate() {
 
                         <div className="flex items-center gap-3">
                             {/* View mode toggle */}
-                            <div className="hidden md:flex items-center gap-1 rounded-full bg-gray-100 px-1 py-0.5 shadow-inner">
+                            {/* View mode toggle */}
+                            <div className="hidden md:flex w-64 items-center bg-gray-100 rounded-full p-1 shadow-inner">
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('normal')}
+                                    onClick={() => setViewMode('default')}
                                     className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'normal'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
+                                        `flex-1 text-center justify-center py-1.5 text-xs font-medium rounded-full transition-all ${viewMode === 'default'
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
                                         }`
                                     }
                                 >
@@ -255,29 +260,15 @@ export default function InvoiceCreate() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setViewMode('split')}
-                                    className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'split'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
-                                        }`
-                                    }
-                                >
-                                    Split
-                                </button>
-                                <button
-                                    type="button"
                                     onClick={() => setViewMode('full')}
                                     className={
-                                        `px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
-                                            viewMode === 'full'
-                                                ? 'bg-blue-600 text-white shadow-sm'
-                                                : 'text-gray-700 hover:bg-gray-200'
+                                        `flex-1 text-center justify-center py-1.5 text-xs font-medium rounded-full transition-all ${viewMode === 'full'
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
                                         }`
                                     }
                                 >
-                                    Focus
+                                    Full Screen
                                 </button>
                             </div>
 
@@ -323,173 +314,199 @@ export default function InvoiceCreate() {
             {/* Main Content */}
             <div
                 className={
-                    `mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-6xl transition-all duration-300 ${
-                        viewMode === 'normal'
-                            ? ''
-                            : 'bg-white rounded-2xl shadow-xl border border-gray-100'
+                    `transition-all duration-300 py-6 ${viewMode === 'full'
+                        ? 'w-full max-w-none px-4 sm:px-8 lg:px-10'
+                        : 'max-w-5xl mx-auto px-4 sm:px-6'
                     }`
                 }
             >
                 {errors.general && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
                         {errors.general}
                     </div>
                 )}
 
-                <div
-                    className={
-                        `grid gap-6 transition-all duration-300 ${
-                            viewMode === 'split'
-                                ? 'grid-cols-1 xl:grid-cols-2'
-                                : 'grid-cols-1 lg:grid-cols-3'
-                        }`
-                    }
-                >
-                    {/* Left Column (2/3 width) */}
-                    <div
-                        className={
-                            `space-y-6 ${
-                                viewMode === 'split'
-                                    ? ''
-                                    : 'lg:col-span-2'
-                            }`
-                        }
-                    >
-                        {/* Customer Selection */}
-                        <div className="card p-6">
-                            <CustomerSelect
-                                value={customer}
-                                onChange={setCustomer}
+                {/* Form Sections - Full Width */}
+                <div className="space-y-5">
+                    {/* Customer Selection */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                        <CustomerSelect
+                            value={customer}
+                            onChange={setCustomer}
+                        />
+                        {errors.customer && <p className="text-red-600 text-sm mt-2">{errors.customer}</p>}
+                    </div>
+
+                    {/* Invoice Meta */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                        <h3 className="text-sm font-semibold text-blue-700 mb-4">Invoice Details</h3>
+                        <InvoiceMeta
+                            invoiceDate={invoiceDate}
+                            dueDate={dueDate}
+                            deliveryDateTime={deliveryDateTime}
+                            paymentTime={paymentTime}
+                            setInvoiceDate={setInvoiceDate}
+                            setDueDate={setDueDate}
+                            setDeliveryDateTime={setDeliveryDateTime}
+                            setPaymentTime={setPaymentTime}
+                            dateError={errors.dueDate}
+                        />
+                        {errors.invoiceDate && <p className="text-red-600 text-sm mt-2">{errors.invoiceDate}</p>}
+
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Reference Number
+                            </label>
+                            <input
+                                type="text"
+                                className="input w-full max-w-sm"
+                                value={reference}
+                                onChange={(e) => setReference(e.target.value)}
+                                placeholder="Optional"
                             />
-                            {errors.customer && <p className="text-red-600 text-sm mt-2">{errors.customer}</p>}
                         </div>
+                    </div>
 
-                        {/* Invoice Meta */}
-                        <div className="card p-6">
-                            <InvoiceMeta
-                                invoiceDate={invoiceDate}
-                                dueDate={dueDate}
-                                deliveryDateTime={deliveryDateTime}
-                                paymentTime={paymentTime}
-                                setInvoiceDate={setInvoiceDate}
-                                setDueDate={setDueDate}
-                                setDeliveryDateTime={setDeliveryDateTime}
-                                setPaymentTime={setPaymentTime}
-                                dateError={errors.dueDate}
-                            />
-                            {errors.invoiceDate && <p className="text-red-600 text-sm mt-2">{errors.invoiceDate}</p>}
+                    {/* Product Search */}
+                    <ProductSearch
+                        onAdd={handleAddProduct}
+                        onNavigateToCreate={() => navigate('/products/new')}
+                    />
 
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Reference
-                                </label>
-                                <input
-                                    type="text"
-                                    className="input w-full"
-                                    value={reference}
-                                    onChange={(e) => setReference(e.target.value)}
-                                    placeholder="PO number, etc."
+                    {/* Invoice Table */}
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-sm font-semibold text-blue-700">Product Details</h3>
+                        </div>
+                        <InvoiceTable
+                            items={items}
+                            onChange={setItems}
+                            perLineTotals={totals.perLineTotals}
+                            columnVisibility={columnVisibility}
+                            onColumnVisibilityChange={setColumnVisibility}
+                        />
+                        {errors.items && <p className="text-red-600 text-sm mt-2">{errors.items}</p>}
+                    </div>
+
+                    {/* Extra Charges */}
+                    <ExtraChargesPanel
+                        charges={extraCharges}
+                        onChange={setExtraCharges}
+                        enabled={extraChargesEnabled}
+                        onToggle={setExtraChargesEnabled}
+                    />
+
+                    {/* Comments / Notes */}
+                    <NotesPanel
+                        notes={notes}
+                        onChange={setNotes}
+                        enabled={notesEnabled}
+                        onToggle={setNotesEnabled}
+                    />
+
+                    {/* Bottom Section: Payments, Signature & Summary */}
+                    <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mt-8">
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            {/* Left: Signature + Payments */}
+                            <div className="space-y-4">
+                                <SignaturePanel signature={signature} onChange={setSignature} />
+
+                                <PaymentPanel
+                                    payments={payments}
+                                    onChange={setPayments}
+                                    grandTotal={totals.grandTotal}
                                 />
                             </div>
-                        </div>
 
-                        {/* Product Search */}
-                        <ProductSearch
-                            onAdd={handleAddProduct}
-                            onNavigateToCreate={() => navigate('/products/new')}
-                        />
+                            {/* Right: Summary */}
+                            <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 text-right">Invoice Summary</h4>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between text-gray-600">
+                                        <span>Subtotal</span>
+                                        <span className="font-medium text-gray-800">₹{totals.subtotal.toFixed(2)}</span>
+                                    </div>
+                                    {isSameState ? (
+                                        <>
+                                            <div className="flex justify-between text-gray-500">
+                                                <span>CGST</span>
+                                                <span>₹{(totals.cgst || 0).toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-gray-500">
+                                                <span>SGST</span>
+                                                <span>₹{(totals.sgst || 0).toFixed(2)}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex justify-between text-gray-500">
+                                            <span>IGST</span>
+                                            <span>₹{(totals.igst || 0).toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    {extraChargesEnabled && extraCharges.length > 0 && (
+                                        <div className="flex justify-between text-gray-500">
+                                            <span>Extra Charges</span>
+                                            <span className="text-amber-600">₹{extraCharges.reduce((s, c) => s + (c.amount || 0), 0).toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between pt-3 border-t border-gray-300">
+                                        <span className="font-semibold text-gray-800">Total</span>
+                                        <span className="font-bold text-lg text-green-600">₹{(totals.grandTotal + (extraChargesEnabled ? extraCharges.reduce((s, c) => s + (c.amount || 0), 0) : 0)).toFixed(2)}</span>
+                                    </div>
+                                </div>
 
-                        {/* Invoice Table */}
-                        <div className="card p-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-semibold text-gray-800">Items</h3>
-                            </div>
-                            <InvoiceTable
-                                items={items}
-                                onChange={setItems}
-                                perLineTotals={totals.perLineTotals}
-                                columnVisibility={columnVisibility}
-                                onColumnVisibilityChange={setColumnVisibility}
-                            />
-                            {errors.items && <p className="text-red-600 text-sm mt-2">{errors.items}</p>}
-                        </div>
-
-                        {/* Extra Charges & Notes */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <ExtraChargesPanel
-                                charges={extraCharges}
-                                onChange={setExtraCharges}
-                                enabled={extraChargesEnabled}
-                                onToggle={setExtraChargesEnabled}
-                            />
-                            <NotesPanel
-                                notes={notes}
-                                onChange={setNotes}
-                                enabled={notesEnabled}
-                                onToggle={setNotesEnabled}
-                            />
-                        </div>
-
-                        {/* Terms & Conditions */}
-                        <div className="card p-6">
-                            <h3 className="font-semibold text-gray-800 mb-3">Terms & Conditions</h3>
-                            <div className="bg-gray-50 border border-gray-200 rounded p-4 text-sm text-gray-700 space-y-2">
-                                <p className="font-medium">Terms And Conditions</p>
-                                <p>1) Goods once sold will not be taken back or exchange.</p>
-                                <p>2) We are not responsible for damage, shortage or breakage after despatched from our premises.</p>
-                                <p>3) We are not responsible for given guarantee or warranty by the principle of electric & electronics items.</p>
-                                <p>4) Subject to Ahmedabad Jurisdiction. [E&OE]</p>
+                                {/* Payment Summary */}
+                                <div className="mt-4 pt-3 border-t border-gray-200">
+                                    <div className="flex justify-between text-sm text-gray-600">
+                                        <span>Received</span>
+                                        <span className="font-medium text-green-600">₹{payments.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Balance</span>
+                                        <span className={`font-semibold ${(totals.grandTotal - payments.reduce((sum, p) => sum + (p.amount || 0), 0)) > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                                            ₹{(totals.grandTotal - payments.reduce((sum, p) => sum + (p.amount || 0), 0)).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Right Column (1/3 width - Sticky) */}
-                    <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-                        {/* Totals Panel */}
-                        <TotalsPanel
-                            totals={totals}
-                            isSameState={isSameState}
-                            extraCharges={extraCharges}
-                            extraChargesEnabled={extraChargesEnabled}
-                        />
-
-                        {/* Payment Panel */}
-                        <PaymentPanel
-                            payments={payments}
-                            onChange={setPayments}
-                            grandTotal={totals.grandTotal}
-                        />
-
-                        {/* Signature Panel */}
-                        <SignaturePanel signature={signature} onChange={setSignature} />
-
-                        {/* Save Buttons (Duplicate for sticky sidebar) */}
-                        <div className="space-y-2">
-                            <button
-                                type="button"
-                                className="btn-secondary w-full"
-                                onClick={() => navigate('/invoices')}
-                                disabled={loading}
-                            >
-                                Cancel
-                            </button>
-                            <div className="flex gap-3 w-full">
-                                <button
-                                    onClick={() => handleSave('Draft', false)}
-                                    disabled={loading}
-                                    className="flex-1 px-6 py-3 border border-gray-300 bg-white text-gray-700 font-semibold rounded-lg hover:bg-gray-50 shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? 'Saving...' : 'Save as Draft'}
-                                </button>
-                                <button
-                                    onClick={() => handleSave('Processing', false)}
-                                    disabled={loading}
-                                    className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 shadow-md  hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? 'Saving...' : 'Save Invoice'}
-                                </button>
-                            </div>
-                        </div>
+                    {/* Action Buttons - Bottom */}
+                    <div className="flex justify-end items-center gap-3 pt-4 pb-8">
+                        <button
+                            type="button"
+                            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            onClick={() => navigate('/invoices')}
+                            disabled={loading}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            onClick={() => handleSave('Draft')}
+                            disabled={loading}
+                        >
+                            Save Draft
+                        </button>
+                        <button
+                            type="button"
+                            className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                            onClick={() => handleSave('Processing', true)}
+                            disabled={loading}
+                        >
+                            Save & Print
+                        </button>
+                        <button
+                            type="button"
+                            className="px-6 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                            onClick={() => handleSave('Processing')}
+                            disabled={loading}
+                        >
+                            {loading ? 'Saving...' : 'Save Invoice'}
+                            <span>→</span>
+                        </button>
                     </div>
                 </div>
             </div>
