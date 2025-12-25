@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, useMemo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import { formatINR } from '../utils/currency'
-import { io } from 'socket.io-client'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import {
+  PieChart,
+  Pie,
+  Cell,
   AreaChart,
   Area,
   XAxis,
@@ -11,265 +15,1196 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
   BarChart,
   Bar
 } from 'recharts'
-import { Users, Building, ShoppingCart, Package, FileText, CheckCircle, TrendingUp, Calendar, BarChart3, ShoppingBag } from 'lucide-react'
+import {
+  FileText,
+  IndianRupee,
+  Wallet,
+  TrendingUp,
+  Calendar,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Users,
+  Package,
+  Filter,
+  Download,
+  RefreshCw,
+  ChevronDown,
+  ArrowUpDown,
+  X,
+  Save
+} from 'lucide-react'
+import { toast } from 'react-hot-toast'
+import CountryStateCitySelect from '../components/common/CountryStateCitySelect'
 
+// Types
 type Stats = {
   totals: { users: number; suppliers: number; buyers: number; products: number }
   invoices: { draft: number; completed: number }
   revenueByMonth: Array<{ label: string; total: number }>
   recentProducts: Array<{ id: number; title: string; supplier?: { name?: string }; price: number; stock: number; createdAt: string | Date }>
   totalSales?: number
+  totalRevenue?: number
+  receivedAmount?: number
+  balancePending?: number
+  paidInvoicesCount?: number
+  unpaidInvoicesCount?: number
+  partialInvoicesCount?: number
+  periodInvoicesCount?: number
 }
+
+// Chart colors palette
+const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6']
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [stats, setStats] = useState<Stats>({
     totals: { users: 0, suppliers: 0, buyers: 0, products: 0 },
     invoices: { draft: 0, completed: 0 },
     revenueByMonth: [],
     recentProducts: [],
-    totalSales: 0
+    totalSales: 0,
+    totalRevenue: 0,
+    receivedAmount: 0
   })
-  const [period, setPeriod] = useState<string>('month')
+  const [loading, setLoading] = useState(true)
 
-  const load = async () => {
-    try {
-      const { data } = await api.get<Stats>(`/stats?period=${period}`)
-      setStats(data as any)
-    } catch { /* ignore */ }
-  }
+  // Real-time invoice summary for accurate balance
+  const [invoiceSummary, setInvoiceSummary] = useState({
+    totalSales: 0,
+    totalReceived: 0,
+    totalBalance: 0,
+    count: 0
+  })
 
-  useEffect(() => { load() }, [period])
-  // Socket.IO disabled - NestJS backend doesn't have Socket.IO Gateway implemented yet
-  // useEffect(() => {
-  //   const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000')
-  //   socket.on('invoice.created', load)
-  //   socket.on('invoice.updated', load)
-  //   socket.on('invoice.deleted', load)
-  //   socket.on('invoice.completed', load)
-  //   return () => { socket.disconnect() }
-  // }, [])
+  // Add Buyer Modal State
+  const [showBuyerModal, setShowBuyerModal] = useState(false)
+  const [buyerForm, setBuyerForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    gstin: '',
+    addressLine1: '',
+    addressLine2: '',
+    area: '',
+    city: '',
+    state: '',
+    country: '',
+    postalCode: ''
+  })
+  const [buyerFormErrors, setBuyerFormErrors] = useState<Record<string, string>>({})
+  const [savingBuyer, setSavingBuyer] = useState(false)
 
-  // Format chart data for better display
-  const chartData = (stats.revenueByMonth || []).map(item => ({
-    name: item.label.split('-')[1] + '/' + item.label.split('-')[0].slice(2),
-    revenue: item.total
-  }))
+  // Analytics data state
+  const [analytics, setAnalytics] = useState<{
+    buyerWiseSales: Array<{ id: number; name: string; total: number; percentage: number }>
+    productWiseSales: Array<{ id: number; name: string; total: number; percentage: number }>
+    topBuyersTable: Array<{ id: number; buyerName: string; totalInvoices: number; totalSales: number; pendingBalance: number }>
+    collectionSummary: { totalSales: number; totalReceived: number; pendingAmount: number; collectionPercentage: number; invoiceCount: number }
+  }>({
+    buyerWiseSales: [],
+    productWiseSales: [],
+    topBuyersTable: [],
+    collectionSummary: { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 }
+  })
 
-  // Calculate total revenue from chart data
-  const totalRevenue = (stats.revenueByMonth || []).reduce((sum, m) => sum + m.total, 0)
+  // Global Date Range Filter State
+  const [dateFrom, setDateFrom] = useState<Date | null>(() => {
+    const from = searchParams.get('from')
+    return from ? new Date(from) : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  })
+  const [dateTo, setDateTo] = useState<Date | null>(() => {
+    const to = searchParams.get('to')
+    return to ? new Date(to) : new Date()
+  })
 
-  const cards = [
-    { title: 'Total Users', value: stats.totals.users, icon: <Users size={24} strokeWidth={1.5} />, color: 'from-blue-500 to-blue-600' },
-    { title: 'Suppliers', value: stats.totals.suppliers, icon: <Building size={24} strokeWidth={1.5} />, color: 'from-green-500 to-green-600' },
-    { title: 'Buyers', value: stats.totals.buyers, icon: <ShoppingCart size={24} strokeWidth={1.5} />, color: 'from-purple-500 to-purple-600' },
-    { title: 'Products', value: stats.totals.products, icon: <Package size={24} strokeWidth={1.5} />, color: 'from-orange-500 to-orange-600' },
-    { title: 'Invoices (Draft)', value: stats.invoices.draft, icon: <FileText size={24} strokeWidth={1.5} />, color: 'from-yellow-500 to-yellow-600' },
-    { title: 'Invoices (Completed)', value: stats.invoices.completed, icon: <CheckCircle size={24} strokeWidth={1.5} />, color: 'from-teal-500 to-teal-600' },
-  ]
+  // Read period from URL for backward compatibility
+  const validPeriods = ['week', 'month', 'lastMonth', 'quarter', 'year', 'custom']
+  const urlPeriod = searchParams.get('period')
+  const period = validPeriods.includes(urlPeriod || '') ? urlPeriod! : 'month'
 
-  const handleSaleReport = () => {
-    // Navigate to invoices with period filter
-    const today = new Date()
-    let startDate = new Date()
+  // Update URL and dates when period preset changes
+  const handlePeriodChange = (newPeriod: string) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('period', newPeriod)
 
-    if (period === 'week') {
-      startDate.setDate(today.getDate() - 7)
-    } else if (period === 'month') {
-      startDate = new Date(today.getFullYear(), today.getMonth(), 1)
-    } else if (period === 'lastMonth') {
-      startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      today.setDate(0) // Last day of previous month
-    } else if (period === 'quarter') {
-      startDate.setMonth(today.getMonth() - 3)
-    } else if (period === 'year') {
-      startDate = new Date(today.getFullYear(), 0, 1)
+    const now = new Date()
+    let newFrom: Date
+    let newTo: Date = new Date()
+
+    switch (newPeriod) {
+      case 'week':
+        newFrom = new Date(now)
+        newFrom.setDate(now.getDate() - 7)
+        break
+      case 'month':
+        newFrom = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case 'lastMonth':
+        newFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        newTo = new Date(now.getFullYear(), now.getMonth(), 0)
+        break
+      case 'quarter':
+        newFrom = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+        break
+      case 'year':
+        newFrom = new Date(now.getFullYear(), 0, 1)
+        break
+      default:
+        newFrom = new Date(now.getFullYear(), now.getMonth(), 1)
     }
 
-    navigate(`/invoices?status=all&from=${startDate.toISOString().split('T')[0]}&to=${today.toISOString().split('T')[0]}`)
+    setDateFrom(newFrom)
+    setDateTo(newTo)
+    params.set('from', newFrom.toISOString().split('T')[0])
+    params.set('to', newTo.toISOString().split('T')[0])
+    setSearchParams(params, { replace: true })
   }
 
-  const handleDaybookReport = () => {
-    // Use local date format (YYYY-MM-DD) to avoid timezone issues
-    const now = new Date()
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    navigate(`/invoices?from=${today}&to=${today}&report=daybook`)
+  // Apply custom date range
+  const handleApplyDateRange = () => {
+    if (dateFrom && dateTo) {
+      const params = new URLSearchParams(searchParams)
+      params.set('period', 'custom')
+      params.set('from', dateFrom.toISOString().split('T')[0])
+      params.set('to', dateTo.toISOString().split('T')[0])
+      setSearchParams(params, { replace: true })
+    }
+  }
+
+  // Load stats
+  const load = async () => {
+    try {
+      setLoading(true)
+
+      // Build URL with date parameters for custom range
+      let url = `/stats?period=${period}`
+      if (dateFrom && dateTo) {
+        const fromStr = dateFrom.toISOString().split('T')[0]
+        const toStr = dateTo.toISOString().split('T')[0]
+        url += `&from=${fromStr}&to=${toStr}`
+      }
+
+      const { data } = await api.get<Stats>(url)
+      setStats(data as any)
+    } catch (err) {
+      console.error('Failed to load stats:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load real-time invoice summary for accurate balance - with date range filter
+  const loadInvoiceSummary = async () => {
+    try {
+      // Build URL with date parameters for period filtering
+      let url = '/invoices/summary'
+      const params = new URLSearchParams()
+
+      if (dateFrom) {
+        params.append('dateFrom', dateFrom.toISOString().split('T')[0])
+      }
+      if (dateTo) {
+        params.append('dateTo', dateTo.toISOString().split('T')[0])
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`
+      }
+
+      const { data } = await api.get(url)
+      if (data) {
+        setInvoiceSummary({
+          totalSales: data.totalSales || 0,
+          totalReceived: data.totalReceived || 0,
+          totalBalance: data.totalBalance || 0,
+          count: data.count || 0
+        })
+      }
+    } catch (err) {
+      // Try to calculate from invoices if summary endpoint not available
+      try {
+        const { data: invoices } = await api.get('/invoices')
+        const items = Array.isArray(invoices) ? invoices : (invoices?.items || [])
+        let totalSales = 0
+        let totalReceived = 0
+
+        // Filter by date range if set
+        const filteredItems = items.filter((inv: any) => {
+          if (!dateFrom && !dateTo) return true
+          const invDate = new Date(inv.createdAt || inv.invoiceDate)
+          if (dateFrom && invDate < dateFrom) return false
+          if (dateTo && invDate > dateTo) return false
+          return true
+        })
+
+        filteredItems.forEach((inv: any) => {
+          totalSales += Number(inv.total || 0)
+          const received = (inv.payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+          totalReceived += received
+        })
+        setInvoiceSummary({
+          totalSales,
+          totalReceived,
+          totalBalance: totalSales - totalReceived,
+          count: filteredItems.length
+        })
+      } catch { }
+    }
+  }
+
+  // Load analytics data (buyer-wise, product-wise sales, top buyers table)
+  const loadAnalytics = async () => {
+    try {
+      const params = new URLSearchParams()
+      params.append('period', period)
+      if (dateFrom) params.append('from', dateFrom.toISOString().split('T')[0])
+      if (dateTo) params.append('to', dateTo.toISOString().split('T')[0])
+
+      const { data } = await api.get(`/dashboard/analytics?${params.toString()}`)
+      if (data) {
+        setAnalytics({
+          buyerWiseSales: data.buyerWiseSales || [],
+          productWiseSales: data.productWiseSales || [],
+          topBuyersTable: data.topBuyersTable || [],
+          collectionSummary: data.collectionSummary || { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 }
+        })
+      }
+    } catch (err) {
+      console.error('Failed to load analytics:', err)
+    }
+  }
+
+  // Save buyer
+  const handleSaveBuyer = async () => {
+    const newErrors: Record<string, string> = {}
+    if (!buyerForm.name.trim()) newErrors.name = 'Name is required'
+    if (!buyerForm.phone.trim()) newErrors.phone = 'Phone is required'
+
+    if (Object.keys(newErrors).length > 0) {
+      setBuyerFormErrors(newErrors)
+      return
+    }
+
+    try {
+      setSavingBuyer(true)
+      await api.post('/buyers', {
+        name: buyerForm.name,
+        email: buyerForm.email,
+        phone: buyerForm.phone,
+        gstin: buyerForm.gstin,
+        addressLine1: buyerForm.addressLine1,
+        addressLine2: buyerForm.addressLine2,
+        area: buyerForm.area,
+        city: buyerForm.city,
+        state: buyerForm.state,
+        country: buyerForm.country,
+        postalCode: buyerForm.postalCode
+      })
+      toast.success('Buyer added successfully!')
+      setShowBuyerModal(false)
+      setBuyerForm({
+        name: '', email: '', phone: '', gstin: '',
+        addressLine1: '', addressLine2: '', area: '',
+        city: '', state: '', country: '', postalCode: ''
+      })
+      load() // Refresh stats
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to add buyer')
+    } finally {
+      setSavingBuyer(false)
+    }
+  }
+
+  // Load on mount, period change, or date range change
+  useEffect(() => {
+    load()
+    loadInvoiceSummary()
+    loadAnalytics()
+  }, [period, dateFrom, dateTo])
+
+  // Auto-refresh every 30 seconds for real-time data
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadInvoiceSummary()
+    }, 30000) // Refresh every 30 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  // Format chart data for display
+  const chartData = useMemo(() => {
+    return (stats.revenueByMonth || []).map(item => {
+      let name = item.label
+      if (item.label.includes('-') && item.label.length === 7) {
+        const parts = item.label.split('-')
+        name = parts[1] + '/' + parts[0].slice(2)
+      }
+      return { name, revenue: item.total }
+    })
+  }, [stats.revenueByMonth])
+
+  // Calculate derived metrics - Use real-time invoice summary for accurate data matching Invoices page
+  // invoiceSummary contains: totalSales, totalReceived, totalBalance, count from /invoices/summary
+  const totalRevenue = invoiceSummary.totalSales || stats.totalRevenue || stats.totalSales || 0
+  const receivedAmount = invoiceSummary.totalReceived || stats.receivedAmount || 0
+  const balanceAmount = invoiceSummary.totalBalance || stats.balancePending || (totalRevenue - receivedAmount)
+  const totalInvoices = invoiceSummary.count || stats.periodInvoicesCount || ((stats.paidInvoicesCount || 0) + (stats.unpaidInvoicesCount || 0) + (stats.partialInvoicesCount || 0) + stats.invoices.draft)
+
+  // Pie chart data - Invoice Status Breakdown
+  const invoiceStatusData = useMemo(() => [
+    { name: 'Paid', value: stats.paidInvoicesCount || 0, color: '#22c55e' },
+    { name: 'Partial', value: stats.partialInvoicesCount || 0, color: '#f59e0b' },
+    { name: 'Unpaid', value: stats.unpaidInvoicesCount || 0, color: '#ef4444' },
+    { name: 'Draft', value: stats.invoices.draft, color: '#94a3b8' }
+  ].filter(d => d.value > 0), [stats])
+
+  // Pie chart data - Entity Distribution
+  const entityDistributionData = useMemo(() => [
+    { name: 'Products', value: stats.totals.products, color: '#6366f1' },
+    { name: 'Buyers', value: stats.totals.buyers, color: '#22c55e' },
+    { name: 'Suppliers', value: stats.totals.suppliers, color: '#f59e0b' },
+    { name: 'Users', value: stats.totals.users, color: '#8b5cf6' }
+  ].filter(d => d.value > 0), [stats.totals])
+
+  // Period label
+  const periodLabels: Record<string, string> = {
+    week: 'Last 7 Days',
+    month: 'This Month',
+    lastMonth: 'Last Month',
+    quarter: 'Last 3 Months',
+    year: 'This Year',
+    custom: 'Custom Range'
   }
 
   return (
-    <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {cards.map((c, i) => (
-          <div
-            key={i}
-            className={`bg-gradient-to-br ${c.color} rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-white/90">{c.icon}</div>
+    <div className="space-y-6 bg-gray-50 min-h-screen -m-6 p-6">
+
+      {/* ===== HEADER WITH GLOBAL DATE FILTER ===== */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Title */}
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-sm text-gray-500">Business Analytics & Performance</p>
+          </div>
+
+          {/* Global Date Filter */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Quick Period Presets */}
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+              {['week', 'month', 'quarter', 'year'].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handlePeriodChange(p)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${period === p
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                  {p === 'week' ? 'Week' : p === 'month' ? 'Month' : p === 'quarter' ? 'Quarter' : 'Year'}
+                </button>
+              ))}
             </div>
-            <div className="text-3xl font-bold mb-1">{c.value}</div>
-            <div className="text-sm opacity-90">{c.title}</div>
-          </div>
-        ))}
-      </div>
 
-      {/* Period Selector & Total Sales */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-gray-600 font-medium">Period:</span>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="px-4 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-          >
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="lastMonth">Last Month</option>
-            <option value="quarter">Quarter (3 Months)</option>
-            <option value="year">This Year</option>
-          </select>
-        </div>
+            {/* Custom Date Range */}
+            <div className="flex items-center gap-2">
+              <Calendar size={18} className="text-gray-400" />
 
-        <div className="flex items-center gap-6">
-          <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl px-6 py-3 text-white shadow-lg">
-            <div className="text-sm opacity-90">Total Revenue</div>
-            <div className="text-2xl font-bold">{formatINR(totalRevenue)}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics Chart */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <BarChart3 size={20} className="text-gray-600" />
-            <h2 className="text-xl font-bold text-gray-800">Sales Analytics</h2>
-          </div>
-          <div className="text-sm text-gray-500">Last 12 Months Revenue</div>
-        </div>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0.1} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="name"
-                stroke="#9ca3af"
-                fontSize={12}
-                tickLine={false}
-              />
-              <YAxis
-                stroke="#9ca3af"
-                fontSize={12}
-                tickLine={false}
-                tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
-              />
-              <Tooltip
-                formatter={(value) => [formatINR(Number(value || 0)), 'Revenue']}
-                contentStyle={{
-                  backgroundColor: '#1f2937',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#fff'
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke="#6366f1"
-                strokeWidth={2}
-                fillOpacity={1}
-                fill="url(#colorRevenue)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Report Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button
-          onClick={handleSaleReport}
-          className="group bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-        >
-          <div className="flex items-center justify-between">
-            <div className="text-left">
-              <div className="flex items-center gap-2 text-lg font-bold mb-1">
-                <TrendingUp size={20} />
-                <span>Sale Report</span>
+              {/* From Date */}
+              <div className="relative flex items-center">
+                <DatePicker
+                  selected={dateFrom}
+                  onChange={(date) => setDateFrom(date)}
+                  maxDate={dateTo || new Date()}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="From"
+                  className="w-32 text-sm px-3 py-2 pr-8 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                />
+                {dateFrom && (
+                  <button
+                    onClick={() => setDateFrom(null)}
+                    className="absolute right-2 p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    title="Clear date"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              <div className="text-sm opacity-90">View detailed sales invoices for selected period</div>
-            </div>
-            <div className="text-3xl group-hover:translate-x-2 transition-transform">→</div>
-          </div>
-        </button>
 
-        <button
-          onClick={handleDaybookReport}
-          className="group bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 rounded-xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-        >
-          <div className="flex items-center justify-between">
-            <div className="text-left">
-              <div className="flex items-center gap-2 text-lg font-bold mb-1">
-                <Calendar size={20} />
-                <span>Daybook Report</span>
+              <span className="text-gray-400">to</span>
+
+              {/* To Date */}
+              <div className="relative flex items-center">
+                <DatePicker
+                  selected={dateTo}
+                  onChange={(date) => setDateTo(date)}
+                  minDate={dateFrom || undefined}
+                  maxDate={new Date()}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="To"
+                  className="w-32 text-sm px-3 py-2 pr-8 border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                />
+                {dateTo && (
+                  <button
+                    onClick={() => setDateTo(null)}
+                    className="absolute right-2 p-0.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    title="Clear date"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              <div className="text-sm opacity-90">View today's transactions and activities</div>
+
+              <button
+                onClick={handleApplyDateRange}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+              >
+                Apply
+              </button>
             </div>
-            <div className="text-3xl group-hover:translate-x-2 transition-transform">→</div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={load}
+              disabled={loading}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
-        </button>
+        </div>
       </div>
 
-      {/* Recent Products */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <ShoppingBag size={20} className="text-gray-600" />
-            <h2 className="text-xl font-bold text-gray-800">Recent Products</h2>
+      {/* ===== KPI CARDS ROW ===== */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Invoices */}
+        <div
+          onClick={() => navigate('/invoices')}
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-blue-100 rounded-xl group-hover:bg-blue-200 transition-colors">
+              <FileText size={24} className="text-blue-600" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Invoices</span>
           </div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{totalInvoices}</div>
+          <div className="text-sm text-gray-500">Total invoices • <span className="text-blue-600 font-medium">{periodLabels[period]}</span></div>
+          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+            <span className="text-green-600">{stats.paidInvoicesCount || 0} Paid</span>
+            <span className="text-amber-600">{stats.partialInvoicesCount || 0} Partial</span>
+            <span className="text-gray-500">{stats.invoices.draft} Draft</span>
+          </div>
+        </div>
+
+        {/* Total Sales */}
+        <div
+          onClick={() => navigate('/invoices?status=paid')}
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-green-200 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-green-100 rounded-xl group-hover:bg-green-200 transition-colors">
+              <TrendingUp size={24} className="text-green-600" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Sales</span>
+          </div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{formatINR(totalRevenue)}</div>
+          <div className="text-sm text-gray-500">Total sales amount</div>
+          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+            {periodLabels[period] || 'This Month'}
+          </div>
+        </div>
+
+        {/* Received Amount */}
+        <div
+          onClick={() => navigate('/payment-records')}
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-emerald-200 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-emerald-100 rounded-xl group-hover:bg-emerald-200 transition-colors">
+              <Wallet size={24} className="text-emerald-600" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Received</span>
+          </div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{formatINR(receivedAmount)}</div>
+          <div className="text-sm text-gray-500">Payment received • <span className="text-emerald-600 font-medium">{periodLabels[period]}</span></div>
+          <div className="mt-3 pt-3 border-t border-gray-100 text-xs">
+            <span className="text-green-600">{totalRevenue > 0 ? ((receivedAmount / totalRevenue) * 100).toFixed(1) : '0.0'}% collected</span>
+          </div>
+        </div>
+
+        {/* Balance/Pending */}
+        <div
+          onClick={() => navigate('/invoices?status=unpaid')}
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:border-amber-200 transition-all group"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 bg-amber-100 rounded-xl group-hover:bg-amber-200 transition-colors">
+              <IndianRupee size={24} className="text-amber-600" />
+            </div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Pending</span>
+          </div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{formatINR(Math.max(0, balanceAmount))}</div>
+          <div className="text-sm text-gray-500">Balance pending • <span className="text-amber-600 font-medium">{periodLabels[period]}</span></div>
+          <div className="mt-3 pt-3 border-t border-gray-100 text-xs">
+            <span className="text-amber-600">{totalRevenue > 0 ? ((balanceAmount / totalRevenue) * 100).toFixed(1) : '0.0'}% pending</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== CHARTS SECTION ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Main Revenue Chart - Takes 2 columns */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 rounded-lg">
+                <BarChart3 size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Revenue Trend</h2>
+                <p className="text-sm text-gray-500">{periodLabels[period] || 'This Month'}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-indigo-600">{formatINR(totalRevenue)}</div>
+              <div className="text-xs text-gray-500">Total Revenue</div>
+            </div>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} />
+                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(value) => [formatINR(Number(value || 0)), 'Revenue']}
+                  contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
+                />
+                <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorRevenue)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Invoice Status Pie Chart */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <PieChartIcon size={20} className="text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Invoice Status</h2>
+              <p className="text-sm text-gray-500">Distribution by status</p>
+            </div>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={invoiceStatusData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {invoiceStatusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => [value, 'Invoices']} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            {invoiceStatusData.map((item) => (
+              <div key={item.name} className="flex items-center gap-2 text-sm">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                <span className="text-gray-600">{item.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ===== MULTI-DIMENSION ANALYTICS CHARTS ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Buyer-wise Sales Pie Chart */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Users size={18} className="text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Top Buyers</h3>
+                <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={analytics.buyerWiseSales}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={75}
+                  paddingAngle={3}
+                  dataKey="total"
+                  nameKey="name"
+                  label={({ name, percent }) => `${(String(name || '')).slice(0, 8)}.. ${((percent || 0) * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {analytics.buyerWiseSales.map((entry, index) => (
+                    <Cell key={`buyer-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: any) => formatINR(value)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-2 mt-4 max-h-32 overflow-y-auto">
+            {analytics.buyerWiseSales.map((buyer, index) => (
+              <div key={buyer.id} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}></div>
+                  <span className="text-gray-700 truncate max-w-[150px]">{buyer.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500">{buyer.percentage}%</span>
+                  <span className="font-medium text-gray-900">{formatINR(buyer.total)}</span>
+                </div>
+              </div>
+            ))}
+            {analytics.buyerWiseSales.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">No data for selected period</p>
+            )}
+          </div>
+        </div>
+
+        {/* Product-wise Sales Pie Chart */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <Package size={18} className="text-orange-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Top Products</h3>
+                <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+              </div>
+            </div>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={analytics.productWiseSales}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={75}
+                  paddingAngle={3}
+                  dataKey="total"
+                  nameKey="name"
+                  label={({ name, percent }) => `${(String(name || '')).slice(0, 8)}.. ${((percent || 0) * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {analytics.productWiseSales.map((entry, index) => (
+                    <Cell key={`product-${index}`} fill={CHART_COLORS[(index + 2) % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: any) => formatINR(value)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-2 mt-4 max-h-32 overflow-y-auto">
+            {analytics.productWiseSales.map((product, index) => (
+              <div key={product.id} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[(index + 2) % CHART_COLORS.length] }}></div>
+                  <span className="text-gray-700 truncate max-w-[150px]">{product.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500">{product.percentage}%</span>
+                  <span className="font-medium text-gray-900">{formatINR(product.total)}</span>
+                </div>
+              </div>
+            ))}
+            {analytics.productWiseSales.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-4">No data for selected period</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ===== SECOND ROW CHARTS ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+        {/* Entity Distribution Pie */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Users size={18} className="text-blue-600" />
+            </div>
+            <h3 className="font-semibold text-gray-900">Entities</h3>
+          </div>
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={entityDistributionData}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={55}
+                  dataKey="value"
+                  label={false}
+                >
+                  {entityDistributionData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value, name) => [value, name]} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-1 mt-2">
+            {entityDistributionData.map((item) => (
+              <div key={item.name} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
+                  <span className="text-gray-600">{item.name}</span>
+                </div>
+                <span className="font-medium text-gray-900">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick Stats Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <Package size={18} className="text-green-600" />
+            </div>
+            <h3 className="font-semibold text-gray-900">Quick Stats</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Products</span>
+              <span className="text-lg font-bold text-gray-900">{stats.totals.products}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Suppliers</span>
+              <span className="text-lg font-bold text-gray-900">{stats.totals.suppliers}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Buyers</span>
+              <span className="text-lg font-bold text-gray-900">{stats.totals.buyers}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-600">Users</span>
+              <span className="text-lg font-bold text-gray-900">{stats.totals.users}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Collection Progress */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <Wallet size={18} className="text-emerald-600" />
+            </div>
+            <h3 className="font-semibold text-gray-900">Collection</h3>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-600">Progress</span>
+                <span className="font-medium text-gray-900">{totalRevenue > 0 ? ((receivedAmount / totalRevenue) * 100).toFixed(1) : '0.0'}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className="bg-gradient-to-r from-emerald-500 to-green-500 h-3 rounded-full transition-all"
+                  style={{ width: `${totalRevenue > 0 ? Math.min((receivedAmount / totalRevenue) * 100, 100) : 0}%` }}
+                ></div>
+              </div>
+            </div>
+            <div className="pt-2 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Total Sales</span>
+                <span className="font-medium">{formatINR(totalRevenue)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Received</span>
+                <span className="font-medium text-green-600">{formatINR(receivedAmount)}</span>
+              </div>
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-gray-500">Pending</span>
+                <span className="font-medium text-amber-600">{formatINR(Math.max(0, balanceAmount))}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Today's Summary */}
+        <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-sm p-5 text-white">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-white/20 rounded-lg">
+              <Calendar size={18} />
+            </div>
+            <h3 className="font-semibold">Today</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg">
+              <span className="text-sm opacity-90">Invoices</span>
+              <span className="text-lg font-bold">{stats.invoices.draft + (stats.paidInvoicesCount || 0)}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg">
+              <span className="text-sm opacity-90">Revenue</span>
+              <span className="text-lg font-bold">{formatINR(totalRevenue)}</span>
+            </div>
+            <button
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0]
+                navigate(`/invoices?from=${today}&to=${today}`)
+              }}
+              className="w-full mt-2 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+            >
+              View Daybook →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== TOP BUYERS ANALYTICS TABLE ===== */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Users size={18} className="text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Top Buyers Analytics</h3>
+              <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'} • Sorted by Total Sales</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/buyers')}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            View All Buyers →
+          </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-gray-600 font-semibold">Title</th>
-                <th className="text-left py-3 px-4 text-gray-600 font-semibold">Supplier</th>
-                <th className="text-left py-3 px-4 text-gray-600 font-semibold">Price</th>
-                <th className="text-left py-3 px-4 text-gray-600 font-semibold">Stock</th>
-                <th className="text-left py-3 px-4 text-gray-600 font-semibold">Date</th>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">#</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Buyer Name</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Invoices</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total Sales</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Pending Balance</th>
               </tr>
             </thead>
             <tbody>
-              {(stats.recentProducts || []).map((p, i) => (
-                <tr key={p.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? 'bg-gray-50/50' : ''}`}>
-                  <td className="py-3 px-4 font-medium text-gray-800">{p.title}</td>
-                  <td className="py-3 px-4 text-gray-600">{p.supplier?.name || '-'}</td>
-                  <td className="py-3 px-4 text-green-600 font-semibold">{formatINR(p.price)}</td>
+              {analytics.topBuyersTable.map((buyer, index) => (
+                <tr key={buyer.id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 text-gray-500">{index + 1}</td>
                   <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.stock > 50 ? 'bg-green-100 text-green-700' :
-                      p.stock > 10 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                      {p.stock}
+                    <span className="font-medium text-gray-900">{buyer.buyerName}</span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                      {buyer.totalInvoices}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-500">{new Date(p.createdAt as any).toLocaleDateString('en-IN')}</td>
+                  <td className="py-3 px-4 text-right font-semibold text-green-600">{formatINR(buyer.totalSales)}</td>
+                  <td className="py-3 px-4 text-right">
+                    <span className={`font-medium ${buyer.pendingBalance > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                      {buyer.pendingBalance > 0 ? formatINR(buyer.pendingBalance) : '₹0'}
+                    </span>
+                  </td>
                 </tr>
               ))}
+              {analytics.topBuyersTable.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-gray-400">
+                    No buyer data for selected period
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+        {analytics.topBuyersTable.length > 0 && (
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between text-sm">
+            <span className="text-gray-500">Showing top {analytics.topBuyersTable.length} buyers</span>
+            <div className="flex items-center gap-4">
+              <span className="text-gray-600">
+                Total: <span className="font-semibold text-gray-900">{formatINR(analytics.topBuyersTable.reduce((sum, b) => sum + b.totalSales, 0))}</span>
+              </span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ===== ANALYTICS TABLES ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Recent Products Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <Package size={18} className="text-orange-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900">Recent Products</h3>
+            </div>
+            <button
+              onClick={() => navigate('/products')}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              View All →
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Product</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Supplier</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Price</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(stats.recentProducts || []).slice(0, 5).map((p, i) => (
+                  <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium text-gray-900">{p.title}</td>
+                    <td className="py-3 px-4 text-gray-600">{p.supplier?.name || '-'}</td>
+                    <td className="py-3 px-4 text-right text-green-600 font-semibold">{formatINR(p.price)}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.stock > 50 ? 'bg-green-100 text-green-700' :
+                        p.stock > 10 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                        {p.stock}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <TrendingUp size={18} className="text-blue-600" />
+            </div>
+            <h3 className="font-semibold text-gray-900">Quick Actions</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => navigate('/invoices/new')}
+              className="p-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl text-white text-left transition-all hover:shadow-lg"
+            >
+              <FileText size={24} className="mb-2" />
+              <div className="font-semibold">New Invoice</div>
+              <div className="text-xs opacity-80">Create a sale</div>
+            </button>
+            <button
+              onClick={() => navigate('/products/new')}
+              className="p-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl text-white text-left transition-all hover:shadow-lg"
+            >
+              <Package size={24} className="mb-2" />
+              <div className="font-semibold">Add Product</div>
+              <div className="text-xs opacity-80">New inventory</div>
+            </button>
+            <button
+              onClick={() => setShowBuyerModal(true)}
+              className="p-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 rounded-xl text-white text-left transition-all hover:shadow-lg"
+            >
+              <Users size={24} className="mb-2" />
+              <div className="font-semibold">Add Buyer</div>
+              <div className="text-xs opacity-80">New customer</div>
+            </button>
+            <button
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0]
+                navigate(`/invoices?from=${today}&to=${today}&report=daybook`)
+              }}
+              className="p-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl text-white text-left transition-all hover:shadow-lg"
+            >
+              <Calendar size={24} className="mb-2" />
+              <div className="font-semibold">Daybook</div>
+              <div className="text-xs opacity-80">Today's report</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== ADD BUYER MODAL ===== */}
+      {showBuyerModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Users size={20} className="text-purple-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Add New Buyer</h2>
+              </div>
+              <button
+                onClick={() => setShowBuyerModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={buyerForm.name}
+                  onChange={(e) => setBuyerForm({ ...buyerForm, name: e.target.value })}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${buyerFormErrors.name ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="Enter buyer name"
+                />
+                {buyerFormErrors.name && <p className="text-red-500 text-xs mt-1">{buyerFormErrors.name}</p>}
+              </div>
+
+              {/* Phone & Email Row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                  <input
+                    type="tel"
+                    value={buyerForm.phone}
+                    onChange={(e) => setBuyerForm({ ...buyerForm, phone: e.target.value })}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${buyerFormErrors.phone ? 'border-red-500' : 'border-gray-300'}`}
+                    placeholder="Phone number"
+                  />
+                  {buyerFormErrors.phone && <p className="text-red-500 text-xs mt-1">{buyerFormErrors.phone}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={buyerForm.email}
+                    onChange={(e) => setBuyerForm({ ...buyerForm, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Email address"
+                  />
+                </div>
+              </div>
+
+              {/* GSTIN */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
+                <input
+                  type="text"
+                  value={buyerForm.gstin}
+                  onChange={(e) => setBuyerForm({ ...buyerForm, gstin: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="GST Number (optional)"
+                />
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                <input
+                  type="text"
+                  value={buyerForm.addressLine1}
+                  onChange={(e) => setBuyerForm({ ...buyerForm, addressLine1: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="Street address"
+                />
+              </div>
+
+              {/* City, State Row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={buyerForm.city}
+                    onChange={(e) => setBuyerForm({ ...buyerForm, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="City"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <input
+                    type="text"
+                    value={buyerForm.state}
+                    onChange={(e) => setBuyerForm({ ...buyerForm, state: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="State"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+              <button
+                onClick={() => setShowBuyerModal(false)}
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveBuyer}
+                disabled={savingBuyer}
+                className="px-4 py-2 text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {savingBuyer ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save Buyer
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

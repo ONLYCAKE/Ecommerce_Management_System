@@ -18,7 +18,7 @@ export default function Invoices() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Data state
   const [items, setItems] = useState<any[]>([])
@@ -47,9 +47,14 @@ export default function Invoices() {
   const [page, setPage] = useState<number>(1)
   const [pageSize, setPageSize] = useState<number>(10)
 
-  // Sort state
-  const [sortBy, setSortBy] = useState<'invoiceNo' | 'total' | null>(null)
+  // Sort state - enhanced with partyName and date columns
+  const [sortBy, setSortBy] = useState<'invoiceNo' | 'total' | 'partyName' | 'date' | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+
+  // Date range filter popup state
+  const [showDateRangeFilter, setShowDateRangeFilter] = useState(false)
+  const [tempDateFrom, setTempDateFrom] = useState<Date | null>(null)
+  const [tempDateTo, setTempDateTo] = useState<Date | null>(null)
 
   // Modal state
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -64,15 +69,33 @@ export default function Invoices() {
   // Socket state
   const [socket, setSocket] = useState<Socket | null>(null)
 
-  // Initialize filters from URL params (for Sale Report / Daybook Report navigation)
+  // Initialize filters from URL params (for Sale Report / Daybook Report navigation + URL state sync)
   useEffect(() => {
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const status = searchParams.get('status')
+    const urlPage = searchParams.get('page')
+    const urlLimit = searchParams.get('limit')
 
+    // Date range filters
     if (from) setDateFrom(new Date(from))
     if (to) setDateTo(new Date(to))
-    if (status && status !== 'all') setStatusFilter(status)
+
+    // Status filter - normalize to match button  values (capitalize first letter)
+    if (status && status !== 'all') {
+      const normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
+      setStatusFilter(normalizedStatus)
+    }
+
+    // Pagination from URL
+    if (urlPage) {
+      const pageNum = parseInt(urlPage)
+      if (!isNaN(pageNum) && pageNum > 0) setPage(pageNum)
+    }
+    if (urlLimit) {
+      const limitNum = parseInt(urlLimit)
+      if (!isNaN(limitNum) && [5, 10, 25, 50, 100].includes(limitNum)) setPageSize(limitNum)
+    }
 
     // Set report mode based on URL
     if (from === to && from) {
@@ -80,18 +103,28 @@ export default function Invoices() {
     } else if (from && to) {
       setReportMode('sale')
     }
-  }, [searchParams])
+  }, []) // Run only on mount - statusFilter change will trigger load via useEffect at line 174
 
   const canCreate = useMemo(() => (user?.permissions || []).includes('invoice.create') || user?.role === 'SuperAdmin', [user])
   const canUpdate = useMemo(() => (user?.permissions || []).includes('invoice.update') || user?.role === 'SuperAdmin', [user])
 
-  // Load invoices
+  // Load invoices - reads filters from URL as source of truth
   const load = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
 
-      if (statusFilter !== 'All') params.append('status', statusFilter)
+      // Read status from URL (source of truth), fallback to state
+      const urlStatus = searchParams.get('status')
+      if (urlStatus && urlStatus !== 'all') {
+        // Normalize: 'draft' → 'Draft', 'paid' → 'Paid'
+        const normalized = urlStatus.charAt(0).toUpperCase() + urlStatus.slice(1).toLowerCase()
+        params.append('status', normalized)
+      } else if (statusFilter !== 'All') {
+        // Fallback to state if no URL param
+        params.append('status', statusFilter)
+      }
+
       if (paymentMethodFilter.length > 0) params.append('paymentMethod', paymentMethodFilter.join(','))
 
       // Handle date range filters (from Sale Report / Daybook Report)
@@ -121,11 +154,20 @@ export default function Invoices() {
     }
   }
 
-  // Fetch summary data
+  // Fetch summary data - reads filters from URL as source of truth
   const loadSummary = async () => {
     try {
       const params = new URLSearchParams()
-      if (statusFilter !== 'All') params.append('status', statusFilter)
+
+      // Read status from URL (source of truth), fallback to state
+      const urlStatus = searchParams.get('status')
+      if (urlStatus && urlStatus !== 'all') {
+        const normalized = urlStatus.charAt(0).toUpperCase() + urlStatus.slice(1).toLowerCase()
+        params.append('status', normalized)
+      } else if (statusFilter !== 'All') {
+        params.append('status', statusFilter)
+      }
+
       if (paymentMethodFilter.length > 0) params.append('paymentMethod', paymentMethodFilter.join(','))
 
       const { data } = await api.get(`/invoices/summary?${params.toString()}`)
@@ -197,8 +239,8 @@ export default function Invoices() {
     }
   }, [])
 
-  // Handle sort
-  const handleSort = (column: 'invoiceNo' | 'total') => {
+  // Handle sort - enhanced for partyName and date columns
+  const handleSort = (column: 'invoiceNo' | 'total' | 'partyName' | 'date') => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
@@ -207,15 +249,87 @@ export default function Invoices() {
     }
   }
 
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
+  // Client-side filtering and sorting (filter first, then sort)
+  const filteredAndSortedItems = useMemo(() => {
+    let result = [...items];
+
+    // Apply date range filter (client-side)
+    if (dateFrom || dateTo) {
+      result = result.filter(inv => {
+        const invDate = new Date(inv.invoiceDate || inv.createdAt);
+        invDate.setHours(0, 0, 0, 0);
+
+        if (dateFrom && dateTo) {
+          const from = new Date(dateFrom);
+          from.setHours(0, 0, 0, 0);
+          const to = new Date(dateTo);
+          to.setHours(23, 59, 59, 999);
+          return invDate >= from && invDate <= to;
+        } else if (dateFrom) {
+          const from = new Date(dateFrom);
+          from.setHours(0, 0, 0, 0);
+          return invDate >= from;
+        } else if (dateTo) {
+          const to = new Date(dateTo);
+          to.setHours(23, 59, 59, 999);
+          return invDate <= to;
+        }
+        return true;
+      });
+    }
+
+    // Apply single date filter (legacy)
+    if (dateFilter) {
+      result = result.filter(inv => {
+        const invDate = new Date(inv.invoiceDate || inv.createdAt);
+        return invDate.toDateString() === dateFilter.toDateString();
+      });
+    }
+
+    // Apply sorting
+    if (sortBy) {
+      result.sort((a, b) => {
+        let aVal: any, bVal: any;
+
+        switch (sortBy) {
+          case 'invoiceNo':
+            aVal = a.invoiceNo || '';
+            bVal = b.invoiceNo || '';
+            break;
+          case 'total':
+            aVal = Number(a.total || 0);
+            bVal = Number(b.total || 0);
+            break;
+          case 'partyName':
+            aVal = (a.buyer?.name || a.partyName || '').toLowerCase();
+            bVal = (b.buyer?.name || b.partyName || '').toLowerCase();
+            break;
+          case 'date':
+            aVal = new Date(a.invoiceDate || a.createdAt).getTime();
+            bVal = new Date(b.invoiceDate || b.createdAt).getTime();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return result;
+  }, [items, sortBy, sortOrder, dateFilter, dateFrom, dateTo]);
+
+  // Pagination calculations - use filtered and sorted items
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedItems.length / pageSize))
   const start = (page - 1) * pageSize
-  const sortedItems = items.slice(start, start + pageSize)
+  const sortedItems = filteredAndSortedItems.slice(start, start + pageSize)
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
-  }, [statusFilter, partyNameSearch, dateFilter])
+  }, [statusFilter, partyNameSearch, dateFilter, dateFrom, dateTo, sortBy, sortOrder])
 
   // Handle email modal
   const openEmailModal = (invoice: any) => {
@@ -367,7 +481,18 @@ export default function Invoices() {
             {['All', 'Draft', 'Unpaid', 'Partial', 'Paid'].map(filter => (
               <button
                 key={filter}
-                onClick={() => setStatusFilter(filter)}
+                onClick={() => {
+                  setStatusFilter(filter)
+                  // Update URL when status changes
+                  const params = new URLSearchParams(searchParams)
+                  if (filter === 'All') {
+                    params.delete('status')
+                  } else {
+                    params.set('status', filter.toLowerCase())
+                  }
+                  params.set('page', '1') // Reset to page 1 on filter change
+                  setSearchParams(params, { replace: true })
+                }}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${statusFilter === filter
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -451,27 +576,89 @@ export default function Invoices() {
           <table className="w-full text-sm">
             <thead className="border-b-2 border-gray-200 bg-gray-50">
               <tr>
-                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-2">
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider" style={{ minWidth: '140px' }}>
+                  <div className="flex items-center gap-1 relative whitespace-nowrap">
                     <span>Date</span>
-                    <div className="relative">
-                      <DatePicker
-                        selected={dateFilter}
-                        onChange={(date) => setDateFilter(date)}
-                        dateFormat="dd/MM/yyyy"
-                        placeholderText="Filter"
-                        isClearable
-                        className="text-xs px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-28"
-                      />
-                    </div>
-                    {dateFilter && (
-                      <button
-                        onClick={() => setDateFilter(null)}
-                        className="p-1 hover:bg-gray-200 rounded"
-                        title="Clear date filter"
-                      >
-                        <X size={14} className="text-gray-500" />
-                      </button>
+
+                    {/* Date Sort Toggle */}
+                    <button
+                      onClick={() => handleSort('date')}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      title={sortBy === 'date' ? (sortOrder === 'asc' ? 'Oldest → Newest' : 'Newest → Oldest') : 'Sort by date'}
+                    >
+                      <ArrowUpDown size={14} className={sortBy === 'date' ? 'text-blue-600' : 'text-gray-400'} />
+                    </button>
+
+                    {/* Date Range Filter Toggle */}
+                    <button
+                      onClick={() => setShowDateRangeFilter(!showDateRangeFilter)}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      title="Filter by date range"
+                    >
+                      <Filter size={14} className={(dateFrom || dateTo) ? 'text-blue-600' : 'text-gray-400'} />
+                    </button>
+
+                    {/* Date Range Filter Popup */}
+                    {showDateRangeFilter && (
+                      <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50 w-72">
+                        <div className="space-y-3">
+                          <div className="text-sm font-semibold text-gray-700 mb-2">Date Range Filter</div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
+                            <DatePicker
+                              selected={tempDateFrom}
+                              onChange={(date) => setTempDateFrom(date)}
+                              dateFormat="dd/MM/yyyy"
+                              placeholderText="Start date"
+                              selectsStart
+                              startDate={tempDateFrom}
+                              endDate={tempDateTo}
+                              maxDate={tempDateTo || undefined}
+                              isClearable
+                              className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+                            <DatePicker
+                              selected={tempDateTo}
+                              onChange={(date) => setTempDateTo(date)}
+                              dateFormat="dd/MM/yyyy"
+                              placeholderText="End date"
+                              selectsEnd
+                              startDate={tempDateFrom}
+                              endDate={tempDateTo}
+                              minDate={tempDateFrom || undefined}
+                              isClearable
+                              className="w-full text-sm px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={() => {
+                                setTempDateFrom(null)
+                                setTempDateTo(null)
+                                setDateFrom(null)
+                                setDateTo(null)
+                                setShowDateRangeFilter(false)
+                              }}
+                              className="flex-1 px-3 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
+                            >
+                              Clear
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDateFrom(tempDateFrom)
+                                setDateTo(tempDateTo)
+                                setShowDateRangeFilter(false)
+                              }}
+                              className="flex-1 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </th>
@@ -484,12 +671,23 @@ export default function Invoices() {
                     <ArrowUpDown size={14} className={sortBy === 'invoiceNo' ? 'text-blue-600' : 'text-gray-400'} />
                   </div>
                 </th>
-                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center gap-2 relative">
+                <th className="px-4 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider" style={{ minWidth: '160px' }}>
+                  <div className="flex items-center gap-1 relative whitespace-nowrap">
                     <span>Party Name</span>
+
+                    {/* Party Name Sort Toggle */}
+                    <button
+                      onClick={() => handleSort('partyName')}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      title={sortBy === 'partyName' ? (sortOrder === 'asc' ? 'Sorted A → Z' : 'Sorted Z → A') : 'Sort by name'}
+                    >
+                      <ArrowUpDown size={14} className={sortBy === 'partyName' ? 'text-blue-600' : 'text-gray-400'} />
+                    </button>
+
+                    {/* Party Name Filter Toggle */}
                     <button
                       onClick={() => setShowPartyNameFilter(!showPartyNameFilter)}
-                      className="p-1 hover:bg-gray-200 rounded"
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
                       title="Filter by party name"
                     >
                       <Filter size={14} className={partyNameSearch ? 'text-blue-600' : 'text-gray-400'} />
@@ -521,7 +719,7 @@ export default function Invoices() {
                             </button>
                             <button
                               onClick={() => setShowPartyNameFilter(false)}
-                              className="flex-1 px-3 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded"
+                              className="flex-1 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded"
                             >
                               Apply
                             </button>
@@ -712,8 +910,14 @@ export default function Invoices() {
                 <select
                   value={pageSize}
                   onChange={(e) => {
-                    setPageSize(Number(e.target.value))
+                    const newSize = Number(e.target.value)
+                    setPageSize(newSize)
                     setPage(1)
+                    // Update URL
+                    const params = new URLSearchParams(searchParams)
+                    params.set('limit', newSize.toString())
+                    params.set('page', '1')
+                    setSearchParams(params, { replace: true })
                   }}
                   className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
@@ -734,7 +938,12 @@ export default function Invoices() {
                 <button
                   className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
                   disabled={page === 1}
-                  onClick={() => setPage(1)}
+                  onClick={() => {
+                    setPage(1)
+                    const params = new URLSearchParams(searchParams)
+                    params.set('page', '1')
+                    setSearchParams(params, { replace: true })
+                  }}
                 >
                   <ChevronsLeft size={18} />
                 </button>
@@ -742,7 +951,13 @@ export default function Invoices() {
                 <button
                   className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
                   disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => {
+                    const newPage = Math.max(1, page - 1)
+                    setPage(newPage)
+                    const params = new URLSearchParams(searchParams)
+                    params.set('page', newPage.toString())
+                    setSearchParams(params, { replace: true })
+                  }}
                 >
                   <ChevronLeft size={18} />
                 </button>
@@ -750,7 +965,13 @@ export default function Invoices() {
                 <button
                   className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => {
+                    const newPage = Math.min(totalPages, page + 1)
+                    setPage(newPage)
+                    const params = new URLSearchParams(searchParams)
+                    params.set('page', newPage.toString())
+                    setSearchParams(params, { replace: true })
+                  }}
                 >
                   <ChevronRight size={18} />
                 </button>
@@ -758,7 +979,12 @@ export default function Invoices() {
                 <button
                   className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-40"
                   disabled={page >= totalPages}
-                  onClick={() => setPage(totalPages)}
+                  onClick={() => {
+                    setPage(totalPages)
+                    const params = new URLSearchParams(searchParams)
+                    params.set('page', totalPages.toString())
+                    setSearchParams(params, { replace: true })
+                  }}
                 >
                   <ChevronsRight size={18} />
                 </button>

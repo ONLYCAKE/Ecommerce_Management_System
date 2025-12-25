@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import { FileText, Package, DollarSign, TrendingUp, Eye, Edit } from 'lucide-react'
 import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
 import DataTable, { Column } from '../components/common/DataTable'
-import { useTableSort, useTablePagination } from '../hooks/useTableFeatures'
+import { useTableSort } from '../hooks/useTableFeatures'
+import { useUrlPagination } from '../hooks/useUrlPagination'
 import TableActions, { ActionButton } from '../components/common/TableActions'
 import StatusBadge from '../components/common/StatusBadge'
 
@@ -56,8 +57,14 @@ export default function Orders() {
   // Apply sorting
   const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(items)
 
-  // Pagination
-  const { currentPage, pageSize, paginatedData, setPage, setPageSize } = useTablePagination(sortedData, 10)
+  // Pagination - URL-based
+  const { page, pageSize, setPage, setPageSize } = useUrlPagination(1, 10)
+
+  // Calculate pagination manually
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1
+  const start = (page - 1) * pageSize
+  const paginatedData = sortedData.slice(start, start + pageSize)
+  const currentPage = page
 
   // Calculate summary metrics
   const summaryMetrics = useMemo(() => {
@@ -215,7 +222,7 @@ export default function Orders() {
         sortDirection={sortDirection}
         onSort={handleSort}
         emptyMessage="No orders found"
-        loading={loading}
+        isLoading={loading}
       />
     </div>
   )

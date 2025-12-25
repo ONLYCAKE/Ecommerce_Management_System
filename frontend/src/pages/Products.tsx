@@ -10,6 +10,7 @@ import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchA
 import TableActions, { ActionButton } from '../components/common/TableActions'
 import { StockBadge } from '../components/common/StatusBadge'
 import { useTableSort } from '../hooks/useTableFeatures'
+import { useUrlPagination } from '../hooks/useUrlPagination'
 
 interface Supplier { id: number; name: string }
 interface Product { id: number; sku?: string; title: string; category?: string; description?: string; price: number; stock: number; supplierId?: number; supplier?: Supplier; hsnCode?: string; taxType?: string; taxRate?: number; isArchived?: boolean }
@@ -18,8 +19,7 @@ interface ProductForm { sku: string; title: string; category: string; descriptio
 export default function Products() {
   const [items, setItems] = useState<Product[]>([])
   const [q, setQ] = useState('')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const { page, pageSize, setPage, setPageSize } = useUrlPagination(1, 10)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -64,36 +64,29 @@ export default function Products() {
   // Summary cards data
   const summaryCards: SummaryCard[] = useMemo(() => {
     const totalProducts = items.filter(p => !p.isArchived).length
-    const totalStock = items.filter(p => !p.isArchived).reduce((sum, p) => sum + p.stock, 0)
-    const lowStock = items.filter(p => !p.isArchived && p.stock < 10).length
+    const totalStockQty = items.filter(p => !p.isArchived).reduce((sum, p) => sum + p.stock, 0)
+    const outOfStock = items.filter(p => !p.isArchived && p.stock === 0).length
 
     return [
       {
         title: 'Total Products',
         value: totalProducts,
         icon: Package,
-        color: 'blue',
-        subtitle: `${items.length} including archived`
+        color: 'blue'
       },
       {
-        title: 'Total Stock',
-        value: totalStock,
+        title: 'Products In Stock',
+        value: totalStockQty,
         icon: Box,
         color: 'green',
-        subtitle: 'Units in inventory'
+        subtitle: 'Total units in inventory'
       },
       {
-        title: 'Low Stock Items',
-        value: lowStock,
+        title: 'Out of Stock',
+        value: outOfStock,
         icon: AlertTriangle,
-        color: 'orange',
-        subtitle: 'Below 10 units'
-      },
-      {
-        title: 'Average Price',
-        value: items.length > 0 ? formatINR(items.reduce((sum, p) => sum + p.price, 0) / items.length) : formatINR(0),
-        icon: TrendingUp,
-        color: 'purple'
+        color: 'red',
+        subtitle: 'Products with 0 stock'
       }
     ]
   }, [items])

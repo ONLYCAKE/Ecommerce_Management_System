@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, IndianRupee, Calendar, ArrowUpDown, ArrowUp, ArrowDown, DollarSign, TrendingUp, CreditCard } from 'lucide-react'
 import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
+import { useUrlPagination } from '../hooks/useUrlPagination'
 
 interface PaymentRecord {
     id: number
@@ -80,9 +81,8 @@ export default function PaymentRecords() {
     const [sortField, setSortField] = useState<SortField>('paymentDate')
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
-    // Pagination
-    const [page, setPage] = useState(1)
-    const [pageSize, setPageSize] = useState(10)
+    // Pagination - URL-based
+    const { page, pageSize, setPage, setPageSize } = useUrlPagination(1, 10)
 
     // Fetch payment records
     useEffect(() => {

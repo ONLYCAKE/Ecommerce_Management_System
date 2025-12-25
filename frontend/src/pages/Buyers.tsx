@@ -11,7 +11,8 @@ import SummaryCards, { SummaryCard } from '../components/common/SummaryCards'
 import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchAndFilterBar'
 import TableActions, { ActionButton } from '../components/common/TableActions'
 import StatusBadge from '../components/common/StatusBadge'
-import { useTableSort, useTablePagination } from '../hooks/useTableFeatures'
+import { useTableSort } from '../hooks/useTableFeatures'
+import { useUrlPagination } from '../hooks/useUrlPagination'
 
 interface Buyer {
   id: number
@@ -85,42 +86,32 @@ export default function Buyers() {
   // Apply sorting
   const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(filtered)
 
-  // Pagination
-  const { currentPage, pageSize, paginatedData, setPage, setPageSize } = useTablePagination(sortedData, 10)
+  // Pagination - URL-based
+  const { page, pageSize, setPage, setPageSize } = useUrlPagination(1, 10)
+
+  // Calculate pagination manually
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1
+  const start = (page - 1) * pageSize
+  const paginatedData = sortedData.slice(start, start + pageSize)
+  const currentPage = page
 
   // Summary cards
   const summaryCards: SummaryCard[] = useMemo(() => {
-    const totalBuyers = items.filter(b => !(b as any).isArchived).length
-    const gstRegistered = items.filter(b => b.gstin && !(b as any).isArchived).length
-    const archivedCount = items.filter(b => (b as any).isArchived).length
+    const totalBuyers = items.length
+    const activeBuyers = items.filter(b => !(b as any).isArchived).length
 
     return [
       {
         title: 'Total Buyers',
         value: totalBuyers,
         icon: ShoppingCart,
-        color: 'teal',
-        subtitle: `${items.length} including archived`
+        color: 'teal'
       },
       {
         title: 'Active Buyers',
-        value: totalBuyers,
+        value: activeBuyers,
         icon: TrendingUp,
         color: 'blue'
-      },
-      {
-        title: 'GST Registered',
-        value: gstRegistered,
-        icon: CreditCard,
-        color: 'indigo',
-        subtitle: 'With valid GSTIN'
-      },
-      {
-        title: 'Total Locations',
-        value: new Set(items.map(b => (b as any).city).filter(Boolean)).size,
-        icon: MapPin,
-        color: 'purple',
-        subtitle: 'Unique cities'
       }
     ]
   }, [items])

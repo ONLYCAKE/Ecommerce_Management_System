@@ -9,7 +9,8 @@ import DataTable, { Column } from '../components/common/DataTable';
 import SummaryCards, { SummaryCard } from '../components/common/SummaryCards';
 import SearchAndFilterBar, { FilterCheckbox } from '../components/common/SearchAndFilterBar';
 import TableActions, { ActionButton } from '../components/common/TableActions';
-import { useTableSort, useTablePagination } from '../hooks/useTableFeatures';
+import { useTableSort } from '../hooks/useTableFeatures';
+import { useUrlPagination } from '../hooks/useUrlPagination';
 
 interface Supplier {
   id: number;
@@ -80,40 +81,32 @@ export default function Suppliers() {
   // Apply sorting
   const { sortColumn, sortDirection, handleSort, sortedData } = useTableSort(filtered);
 
-  // Pagination
-  const { currentPage, pageSize, paginatedData, setPage, setPageSize } = useTablePagination(sortedData, 10);
+  // Pagination - URL-based
+  const { page, pageSize, setPage, setPageSize } = useUrlPagination(1, 10);
+
+  // Calculate pagination manually
+  const totalPages = Math.ceil(sortedData.length / pageSize) || 1;
+  const start = (page - 1) * pageSize;
+  const paginatedData = sortedData.slice(start, start + pageSize);
+  const currentPage = page;
 
   // Summary cards
   const summaryCards: SummaryCard[] = useMemo(() => {
-    const totalSuppliers = items.filter(s => !(s as any).isArchived).length;
-    const archivedCount = items.filter(s => (s as any).isArchived).length;
+    const totalSuppliers = items.length;
+    const activeSuppliers = items.filter(s => !(s as any).isArchived).length;
 
     return [
       {
         title: 'Total Suppliers',
         value: totalSuppliers,
         icon: Truck,
-        color: 'green',
-        subtitle: `${items.length} including archived`
+        color: 'green'
       },
       {
         title: 'Active Suppliers',
-        value: totalSuppliers,
+        value: activeSuppliers,
         icon: TrendingUp,
         color: 'blue'
-      },
-      {
-        title: 'Archived',
-        value: archivedCount,
-        icon: Archive,
-        color: 'orange'
-      },
-      {
-        title: 'Total Locations',
-        value: new Set(items.map(s => (s as any).city).filter(Boolean)).size,
-        icon: MapPin,
-        color: 'purple',
-        subtitle: 'Unique cities'
       }
     ];
   }, [items]);

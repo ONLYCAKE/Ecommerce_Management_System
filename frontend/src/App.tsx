@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar.tsx'
 import Topbar from './components/Topbar.tsx'
+import Footer from './components/Footer.tsx'
 import Login from './pages/Login.tsx'
 import ChangePassword from './pages/ChangePassword.tsx'
 import Dashboard from './pages/Dashboard.tsx'
@@ -71,6 +72,7 @@ function Shell() {
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
+        <Footer />
       </div>
     </div>
   )

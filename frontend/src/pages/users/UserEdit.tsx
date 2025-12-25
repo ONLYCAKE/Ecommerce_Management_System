@@ -13,6 +13,7 @@ export default function UserEdit() {
     const { user: currentUser } = useAuth()
     const [roles, setRoles] = useState<Role[]>([])
     const [loading, setLoading] = useState(true)
+    const [loadedUser, setLoadedUser] = useState<any>(null) // Store full user object
     const [form, setForm] = useState({
         email: '',
         firstName: '',
@@ -41,6 +42,18 @@ export default function UserEdit() {
                 ])
                 setRoles(rolesRes.data)
                 const user = userRes.data.items?.[0] || userRes.data
+
+                // Store full user object for role extraction
+                setLoadedUser(user)
+
+                console.log('🔍 UserEdit - Loaded User Data:', {
+                    userId: user.id,
+                    userEmail: user.email,
+                    roleId: user.roleId,
+                    roleObject: user.role,
+                    roleName: user.role?.name
+                })
+
                 setForm({
                     email: user.email || '',
                     firstName: user.firstName || '',
@@ -109,8 +122,8 @@ export default function UserEdit() {
                     <button
                         onClick={() => setActiveTab('info')}
                         className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'info'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         <User size={18} />
@@ -120,8 +133,8 @@ export default function UserEdit() {
                         <button
                             onClick={() => setActiveTab('permissions')}
                             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'permissions'
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-blue-500 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             <Shield size={18} />
@@ -256,6 +269,7 @@ export default function UserEdit() {
                     <PermissionOverridePanel
                         userId={Number(id)}
                         userRoleId={form.roleId}
+                        userRole={loadedUser?.role?.name || selectedRole?.name}
                     />
                 </div>
             )}

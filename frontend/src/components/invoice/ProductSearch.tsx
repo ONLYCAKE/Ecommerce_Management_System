@@ -14,9 +14,10 @@ interface Product {
 interface ProductSearchProps {
     onAdd: (product: Product, qty: number) => void
     onNavigateToCreate?: () => void
+    excludedProductIds?: number[] // NEW: Products to hide from selection
 }
 
-export default function ProductSearch({ onAdd, onNavigateToCreate }: ProductSearchProps) {
+export default function ProductSearch({ onAdd, onNavigateToCreate, excludedProductIds = [] }: ProductSearchProps) {
     const [search, setSearch] = useState('')
     const [qty, setQty] = useState(1)
     const [products, setProducts] = useState<Product[]>([])
@@ -55,25 +56,29 @@ export default function ProductSearch({ onAdd, onNavigateToCreate }: ProductSear
         loadAllProducts()
     }, [])
 
-    // Filter products based on search
+    // Filter products based on search AND excludedProductIds
     useEffect(() => {
+        // Filter out excluded products first
+        const availableProducts = allProducts.filter(p => !excludedProductIds.includes(p.id))
+
         if (search.length === 0) {
-            setProducts(allProducts)
+            setProducts(availableProducts)
             return
         }
 
-        const filtered = allProducts.filter(p =>
+        const filtered = availableProducts.filter(p =>
             p.title.toLowerCase().includes(search.toLowerCase()) ||
             p.sku.toLowerCase().includes(search.toLowerCase())
         )
         setProducts(filtered)
-    }, [search, allProducts])
+    }, [search, allProducts, excludedProductIds])
 
     const handleSelect = (product: Product) => {
         onAdd(product, qty)
         setSearch('')
-        // Keep dropdown open and show all products again
-        setProducts(allProducts)
+        // Keep dropdown open and show remaining available products
+        const availableProducts = allProducts.filter(p => !excludedProductIds.includes(p.id))
+        setProducts(availableProducts)
         setIsOpen(true)
         // Reset qty to 1 for next product
         setQty(1)

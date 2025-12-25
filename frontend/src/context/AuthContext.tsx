@@ -27,6 +27,7 @@ export interface AuthContextValue {
   user: User | null;
   login: (tk: string, usr: User) => void;
   logout: () => void;
+  refreshPermissions: () => Promise<void>;
   loading: boolean;
 }
 
@@ -139,6 +140,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate("/login", { replace: true });
   };
 
+  /* ---------------------- REFRESH PERMISSIONS ---------------------- */
+  const refreshPermissions = async () => {
+    if (!token) return;
+
+    try {
+      const { data } = await api.get<User>("/auth/me");
+      setUser(data);
+      localStorage.setItem("user", JSON.stringify(data));
+      console.log("✅ Permissions refreshed");
+    } catch (err: any) {
+      console.warn("Permission refresh failed:", err?.response?.data || err);
+    }
+  };
+
   /* ------------------ PROVIDE MEMOIZED CONTEXT VALUE ------------------ */
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -146,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       logout,
+      refreshPermissions,
       loading,
     }),
     [token, user, loading]

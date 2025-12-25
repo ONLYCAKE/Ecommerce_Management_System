@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Shield, Plus, Trash2, CheckCircle, XCircle } from 'lucide-react'
+import { Shield, CheckCircle, XCircle, Info } from 'lucide-react'
 import api from '../../api/client'
-import AddOverrideModal from './AddOverrideModal'
+import { useAuth } from '../../hooks/useAuth'
 
 interface Permission {
     id: number
@@ -17,14 +17,34 @@ interface Override {
 interface PermissionOverridePanelProps {
     userId: number
     userRoleId: number
+    userRole?: string
 }
 
-export default function PermissionOverridePanel({ userId, userRoleId }: PermissionOverridePanelProps) {
+type PermissionSource = 'role' | 'grant' | 'deny' | 'none'
+
+export default function PermissionOverridePanel({ userId, userRoleId, userRole }: PermissionOverridePanelProps) {
+    const { refreshPermissions } = useAuth()
     const [permissions, setPermissions] = useState<Permission[]>([])
     const [rolePermissions, setRolePermissions] = useState<Set<string>>(new Set())
     const [overrides, setOverrides] = useState<Override[]>([])
     const [loading, setLoading] = useState(true)
-    const [showAddModal, setShowAddModal] = useState(false)
+    const [saving, setSaving] = useState(false)
+
+    const isSuperAdmin = userRole?.toLowerCase() === 'superadmin'
+    const isAdmin = userRole?.toLowerCase() === 'admin'
+    const isEmployee = userRole?.toLowerCase() === 'employee'
+
+    // Debug logging
+    useEffect(() => {
+        console.log('🔍 PermissionOverridePanel Debug:', {
+            userRole,
+            isSuperAdmin,
+            isAdmin,
+            isEmployee,
+            userId,
+            userRoleId
+        })
+    }, [userRole, isSuperAdmin, isAdmin, isEmployee])
 
     useEffect(() => {
         loadData()
@@ -41,6 +61,7 @@ export default function PermissionOverridePanel({ userId, userRoleId }: Permissi
 
             setPermissions(permsRes.data.items || permsRes.data || [])
 
+            // Extract role permission keys
             const rpKeys = new Set<string>(
                 (rolePermsRes.data.items || rolePermsRes.data || [])
                     .filter((rp: any) => rp.enabled)
@@ -55,39 +76,127 @@ export default function PermissionOverridePanel({ userId, userRoleId }: Permissi
         }
     }
 
-    const handleAddOverride = async (key: string, mode: 'GRANT' | 'DENY') => {
-        try {
-            await api.put(`/users/${userId}/overrides`, {
-                overrides: [...overrides.filter(o => o.key !== key), { key, mode }]
-            })
-            await loadData()
-            setShowAddModal(false)
-        } catch (err) {
-            console.error('Error adding override:', err)
-            alert('Failed to add override')
-        }
-    }
-
-    const handleDeleteOverride = async (key: string) => {
-        if (!confirm('Delete this permission override?')) return
-
-        try {
-            await api.delete(`/users/${userId}/overrides/${key}`)
-            await loadData()
-        } catch (err) {
-            console.error('Error deleting override:', err)
-            alert('Failed to delete override')
-        }
-    }
-
-    const getEffectivePermission = (key: string): boolean => {
+    // Determine permission source and effective state
+    const getPermissionState = (key: string): { source: PermissionSource; isEffective: boolean } => {
         const hasRole = rolePermissions.has(key)
         const override = overrides.find(o => o.key === key)
 
-        if (!override) return hasRole
-        if (override.mode === 'GRANT') return true
-        if (override.mode === 'DENY') return false
-        return hasRole
+        // SuperAdmin always has all permissions
+        if (isSuperAdmin) {
+            return { source: 'role', isEffective: true }
+        }
+
+        // Check override first
+        if (override) {
+            if (override.mode === 'GRANT') {
+                return { source: 'grant', isEffective: true }
+            }
+            if (override.mode === 'DENY') {
+                return { source: 'deny', isEffective: false }
+            }
+        }
+
+        // Fall back to role permission
+        if (hasRole) {
+            return { source: 'role', isEffective: true }
+        }
+
+        return { source: 'none', isEffective: false }
+    }
+
+    const handleTogglePermission = async (key: string) => {
+        if (isSuperAdmin || saving) return // SuperAdmin permissions are read-only
+
+        setSaving(true)
+        try {
+            const { source, isEffective } = getPermissionState(key)
+            const hasRole = rolePermissions.has(key)
+            let newOverrides = [...overrides]
+
+            // Determine what to do based on current state and role defaults
+            if (isEffective) {
+                // Currently has permission - user wants to remove it
+                if (source === 'role') {
+                    // Permission from role - add DENY override
+                    newOverrides = newOverrides.filter(o => o.key !== key)
+                    newOverrides.push({ key, mode: 'DENY' })
+                } else if (source === 'grant') {
+                    // Permission from GRANT override - remove override
+                    newOverrides = newOverrides.filter(o => o.key !== key)
+                }
+                // source === 'deny' shouldn't happen if isEffective is true
+            } else {
+                // Currently doesn't have permission - user wants to add it
+                if (source === 'deny') {
+                    // Was denied - remove DENY override
+                    newOverrides = newOverrides.filter(o => o.key !== key)
+                } else {
+                    // Not in role - add GRANT override
+                    newOverrides = newOverrides.filter(o => o.key !== key)
+                    newOverrides.push({ key, mode: 'GRANT' })
+                }
+            }
+
+            // Save to backend
+            await api.put(`/users/${userId}/overrides`, { overrides: newOverrides })
+
+            // Reload data
+            await loadData()
+
+            // Refresh current user's permissions
+            await refreshPermissions()
+
+            // Force reload if editing current user for full UI sync
+            const currentUserId = JSON.parse(localStorage.getItem('user') || '{}').id
+            if (currentUserId === userId) {
+                setTimeout(() => window.location.reload(), 300)
+            }
+        } catch (err) {
+            console.error('Error toggling permission:', err)
+            alert('Failed to update permission')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const getPermissionBadge = (source: PermissionSource) => {
+        switch (source) {
+            case 'role':
+                return (
+                    <span className="ml-2 text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                        Role
+                    </span>
+                )
+            case 'grant':
+                return (
+                    <span className="ml-2 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded font-semibold">
+                        ✓ GRANT
+                    </span>
+                )
+            case 'deny':
+                return (
+                    <span className="ml-2 text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded font-semibold">
+                        ✗ DENY
+                    </span>
+                )
+            default:
+                return null
+        }
+    }
+
+    const getTooltipText = (source: PermissionSource, isEffective: boolean) => {
+        if (isSuperAdmin) return 'SuperAdmin has all permissions by default'
+
+        switch (source) {
+            case 'role':
+                return 'Granted by role'
+            case 'grant':
+                return 'Granted explicitly (override)'
+            case 'deny':
+                return 'Blocked by override'
+            default:
+                return isEffective ? 'Permission enabled' : 'Permission disabled'
+        }
     }
 
     if (loading) {
@@ -95,132 +204,133 @@ export default function PermissionOverridePanel({ userId, userRoleId }: Permissi
             <div className="card p-6">
                 <div className="flex items-center gap-2 text-gray-600">
                     <Shield className="animate-pulse" size={18} />
-                    <span>Loading permission overrides...</span>
+                    <span>Loading permissions...</span>
                 </div>
             </div>
         )
     }
 
-    const overrideMap = new Map(overrides.map(o => [o.key, o.mode]))
+    // Calculate stats
+    const effectiveCount = permissions.filter(p => getPermissionState(p.key).isEffective).length
+    const grantCount = overrides.filter(o => o.mode === 'GRANT').length
+    const denyCount = overrides.filter(o => o.mode === 'DENY').length
 
     return (
         <div className="card p-6 space-y-4">
+            {/* Header */}
             <div className="flex items-center justify-between border-b pb-3">
                 <div className="flex items-center gap-2">
                     <Shield size={20} className="text-blue-600" />
-                    <h3 className="text-lg font-semibold text-gray-800">Permission Overrides</h3>
-                    <span className="text-xs text-gray-500">(User-Specific)</span>
-                </div>
-                <button
-                    type="button"
-                    className="btn-primary text-sm flex items-center gap-2"
-                    onClick={() => setShowAddModal(true)}
-                >
-                    <Plus size={16} />
-                    Add Override
-                </button>
-            </div>
-
-            <div className="text-sm space-y-2 mb-4">
-                <div className="flex justify-between text-gray-600">
-                    <span>Role Permissions:</span>
-                    <span className="font-medium">{rolePermissions.size}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                    <span>Overrides Applied:</span>
-                    <span className="font-medium">{overrides.length}</span>
-                </div>
-                <div className="flex justify-between text-gray-700 font-semibold border-t pt-2">
-                    <span>Effective Permissions:</span>
-                    <span>{permissions.filter(p => getEffectivePermission(p.key)).length}</span>
+                    <h3 className="text-lg font-semibold text-gray-800">User Permissions</h3>
+                    {isSuperAdmin && (
+                        <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-purple-50 border border-purple-200 rounded text-xs text-purple-700">
+                            <Info size={14} />
+                            <span className="font-semibold">SuperAdmin</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {overrides.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
-                    <p className="text-xs text-blue-700">
-                        <strong>Note:</strong> Overrides apply only to this user and do not affect the role.
-                        GRANT adds permissions not in the role. DENY removes permissions from the role.
+            {/* Role Info Banner */}
+            {isSuperAdmin && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <p className="text-sm text-purple-900">
+                        <strong>🔐 SuperAdmin Access:</strong><br />
+                        This user has the <strong>SuperAdmin</strong> role which grants <strong>ALL permissions</strong> automatically.
+                        Permissions cannot be modified and are shown for reference only.
                     </p>
                 </div>
             )}
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                        <tr>
-                            <th className="text-left py-2 px-3 font-semibold text-gray-700">Permission</th>
-                            <th className="text-center py-2 px-3 font-semibold text-gray-700">From Role</th>
-                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Override</th>
-                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Effective</th>
-                            <th className="text-center py-2 px-3 font-semibold text-gray-700">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {permissions.map((perm) => {
-                            const override = overrideMap.get(perm.key)
-                            const hasRole = rolePermissions.has(perm.key)
-                            const effective = getEffectivePermission(perm.key)
+            {isAdmin && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-900">
+                        <strong>💡 Admin Role:</strong><br />
+                        Permissions marked with <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium mx-1">Role</span> are granted by the Admin role.
+                        You can add <span className="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold mx-1">✓ GRANT</span> overrides for additional permissions
+                        or <span className="inline-block px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs font-semibold mx-1">✗ DENY</span> overrides to remove specific permissions.
+                    </p>
+                </div>
+            )}
 
-                            return (
-                                <tr key={perm.id} className="hover:bg-gray-50">
-                                    <td className="py-2 px-3">
-                                        <div className="font-mono text-xs">{perm.key}</div>
-                                        <div className="text-gray-600 text-xs">{perm.name}</div>
-                                    </td>
-                                    <td className="text-center py-2 px-3">
-                                        {hasRole ? (
-                                            <CheckCircle className="inline text-green-600" size={18} />
-                                        ) : (
-                                            <XCircle className="inline text-gray-300" size={18} />
-                                        )}
-                                    </td>
-                                    <td className="text-center py-2 px-3">
-                                        {override === 'GRANT' && (
-                                            <span className="inline-block px-2 py-1 text-xs font-semibold bg-green-100 text-green-700 rounded">
-                                                ✅ GRANT
-                                            </span>
-                                        )}
-                                        {override === 'DENY' && (
-                                            <span className="inline-block px-2 py-1 text-xs font-semibold bg-red-100 text-red-700 rounded">
-                                                ❌ DENY
-                                            </span>
-                                        )}
-                                        {!override && <span className="text-gray-400">-</span>}
-                                    </td>
-                                    <td className="text-center py-2 px-3">
-                                        {effective ? (
-                                            <CheckCircle className="inline text-blue-600 font-bold" size={20} />
-                                        ) : (
-                                            <XCircle className="inline text-gray-400" size={20} />
-                                        )}
-                                    </td>
-                                    <td className="text-center py-2 px-3">
-                                        {override && (
-                                            <button
-                                                onClick={() => handleDeleteOverride(perm.key)}
-                                                className="text-red-600 hover:text-red-800 p-1"
-                                                title="Remove override"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            )
-                        })}
-                    </tbody>
-                </table>
+            {isEmployee && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">
+                        <strong>👤 Employee Role:</strong><br />
+                        By default, employees have no permissions. Check boxes to grant specific permissions via <span className="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold mx-1">✓ GRANT</span> overrides.
+                    </p>
+                </div>
+            )}
+
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-4 text-sm">
+                <div className="bg-gray-50 rounded p-3">
+                    <div className="text-gray-600 text-xs">From Role</div>
+                    <div className="text-lg font-bold text-gray-800">{rolePermissions.size}</div>
+                </div>
+                <div className="bg-green-50 rounded p-3">
+                    <div className="text-green-600 text-xs">GRANT Overrides</div>
+                    <div className="text-lg font-bold text-green-700">{grantCount}</div>
+                </div>
+                <div className="bg-red-50 rounded p-3">
+                    <div className="text-red-600 text-xs">DENY Overrides</div>
+                    <div className="text-lg font-bold text-red-700">{denyCount}</div>
+                </div>
+                <div className="bg-blue-50 rounded p-3">
+                    <div className="text-blue-600 text-xs">Effective Total</div>
+                    <div className="text-lg font-bold text-blue-700">{effectiveCount}</div>
+                </div>
             </div>
 
-            {showAddModal && (
-                <AddOverrideModal
-                    permissions={permissions}
-                    existingOverrides={overrides}
-                    onAdd={handleAddOverride}
-                    onClose={() => setShowAddModal(false)}
-                />
-            )}
+            {/* Permission Checkboxes */}
+            <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b">
+                    <span className="text-sm font-semibold text-gray-700">All Permissions ({permissions.length})</span>
+                    {saving && <span className="ml-3 text-xs text-gray-500">Saving...</span>}
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                    {permissions.map((perm) => {
+                        const { source, isEffective } = getPermissionState(perm.key)
+                        const tooltipText = getTooltipText(source, isEffective)
+
+                        return (
+                            <div
+                                key={perm.id}
+                                className={`px-4 py-3 border-b last:border-b-0 hover:bg-gray-50 transition-colors ${saving ? 'opacity-50 pointer-events-none' : ''
+                                    }`}
+                            >
+                                <label
+                                    className="flex items-center cursor-pointer"
+                                    title={tooltipText}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isEffective}
+                                        onChange={() => handleTogglePermission(perm.key)}
+                                        disabled={isSuperAdmin || saving}
+                                        className={`h-5 w-5 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 ${isSuperAdmin ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                                            }`}
+                                    />
+                                    <div className="ml-3 flex-1">
+                                        <div className="flex items-center">
+                                            <span className="text-sm font-medium text-gray-800">
+                                                {perm.name}
+                                            </span>
+                                            {getPermissionBadge(source)}
+                                        </div>
+                                        <span className="text-xs text-gray-500 font-mono">{perm.key}</span>
+                                    </div>
+                                    {isEffective ? (
+                                        <CheckCircle size={18} className="text-green-600" />
+                                    ) : (
+                                        <XCircle size={18} className="text-gray-300" />
+                                    )}
+                                </label>
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
         </div>
     )
 }

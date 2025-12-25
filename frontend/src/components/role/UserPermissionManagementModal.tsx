@@ -36,6 +36,9 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
     const [search, setSearch] = useState('')
     const [category, setCategory] = useState<'all' | string>('all')
 
+    // Detect SuperAdmin role
+    const isSuperAdmin = roleName?.toLowerCase() === 'superadmin'
+
     useEffect(() => {
         loadData()
     }, [user.id, user.roleId])
@@ -58,6 +61,16 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
                     .filter((rp: any) => rp.enabled)
                     .map((rp: any) => rp.permission?.key || rp.key)
             )
+
+            console.log('🔍 Permission Modal Debug:', {
+                userId: user.id,
+                roleName,
+                isSuperAdmin,
+                totalPermissions: allPerms.length,
+                rolePermissions: Array.from(rpKeys),
+                rolePermissionCount: rpKeys.size
+            })
+
             setRolePermissions(rpKeys)
 
             // Get overrides
@@ -69,11 +82,33 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
             setOverrides(overridesMap)
 
             // Calculate effective permissions
-            const effective = new Set(rpKeys)
-            overridesArray.forEach((o: any) => {
-                if (o.mode === 'GRANT') effective.add(o.key)
-                if (o.mode === 'DENY') effective.delete(o.key)
-            })
+            let effective: Set<string>
+
+            if (isSuperAdmin) {
+                // SuperAdmin gets ALL permissions checked
+                effective = new Set(allPerms.map((p: Permission) => p.key))
+                console.log('✅ SuperAdmin detected - all permissions enabled')
+            } else {
+                // Normal role resolution
+                effective = new Set(rpKeys)
+
+                console.log('📋 Starting with role permissions:', {
+                    effectiveCount: effective.size,
+                    firstFew: Array.from(effective).slice(0, 10)
+                })
+
+                overridesArray.forEach((o: any) => {
+                    if (o.mode === 'GRANT') effective.add(o.key)
+                    if (o.mode === 'DENY') effective.delete(o.key)
+                })
+
+                console.log('✅ After applying overrides:', {
+                    effectiveCount: effective.size,
+                    grantOverrides: overridesArray.filter((o: any) => o.mode === 'GRANT').length,
+                    denyOverrides: overridesArray.filter((o: any) => o.mode === 'DENY').length
+                })
+            }
+
             setSelected(effective)
         } catch (err) {
             console.error('Error loading permission data:', err)
@@ -83,6 +118,11 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
     }
 
     const togglePermission = async (key: string, currentlyHas: boolean) => {
+        // SuperAdmin cannot toggle permissions (always has all)
+        if (isSuperAdmin) {
+            return
+        }
+
         const hasFromRole = rolePermissions.has(key)
         const currentOverride = overrides.get(key)
 
@@ -232,12 +272,18 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
                             <h3 className="text-xl font-bold flex items-center gap-2">
                                 <Shield size={24} />
                                 Manage User Permissions
+                                {isSuperAdmin && (
+                                    <span className="ml-2 px-3 py-1 bg-purple-500 text-white text-xs font-bold rounded-full">
+                                        SUPERADMIN
+                                    </span>
+                                )}
                             </h3>
                             <p className="text-blue-100 text-sm mt-1">
                                 {userName} • {user.email} • <span className="font-medium">{roleName}</span> role
                             </p>
                             <p className="text-blue-200 text-xs mt-1">
                                 {selected.size} of {permissions.length} permissions enabled • {overrides.size} custom overrides
+                                {isSuperAdmin && <span className="ml-2 font-semibold">(All permissions granted by default)</span>}
                             </p>
                         </div>
                         <button onClick={onClose} className="text-white hover:bg-white/20 p-2 rounded-lg transition">
@@ -290,15 +336,17 @@ export default function UserPermissionManagementModal({ user, roleName, onClose 
                                     <div className="flex items-center gap-2 text-xs">
                                         <button
                                             type="button"
-                                            className="px-2.5 py-1 rounded-md border border-green-200 text-green-700 bg-green-50 hover:bg-green-100"
+                                            className="px-2.5 py-1 rounded-md border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                             onClick={() => updateBulk(groupPerms.map((p) => p.key), true)}
+                                            disabled={isSuperAdmin}
                                         >
                                             + Enable All
                                         </button>
                                         <button
                                             type="button"
-                                            className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
+                                            className="px-2.5 py-1 rounded-md border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
                                             onClick={() => updateBulk(groupPerms.map((p) => p.key), false)}
+                                            disabled={isSuperAdmin}
                                         >
                                             - Disable All
                                         </button>

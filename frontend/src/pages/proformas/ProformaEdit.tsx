@@ -92,18 +92,32 @@ export default function ProformaEdit() {
   }, [id])
 
   const handleAddProduct = (product: Product, qty: number) => {
-    const newItem: InvoiceItem = {
-      id: Date.now().toString(),
-      productId: product.id,
-      title: product.title,
-      qty,
-      unitPrice: product.price,
-      taxRate: product.taxType === 'withTax' ? (product.taxRate ?? 18) : 0,
-      discount: 0,
-      uom: 'Pcs',
-      hsnCode: product.hsnCode || '',
+    // Check if product already exists in items
+    const existingItemIndex = items.findIndex(item => item.productId === product.id)
+
+    if (existingItemIndex !== -1) {
+      // Product exists: increment quantity
+      const updatedItems = [...items]
+      updatedItems[existingItemIndex] = {
+        ...updatedItems[existingItemIndex],
+        qty: updatedItems[existingItemIndex].qty + qty
+      }
+      setItems(updatedItems)
+    } else {
+      // Product doesn't exist: add new row
+      const newItem: InvoiceItem = {
+        id: Date.now().toString(),
+        productId: product.id,
+        title: product.title,
+        qty,
+        unitPrice: product.price,
+        taxRate: product.taxType === 'withTax' ? (product.taxRate ?? 18) : 0,
+        discount: 0,
+        uom: 'Pcs',
+        hsnCode: product.hsnCode || '',
+      }
+      setItems(prev => [...prev, newItem])
     }
-    setItems(prev => [...prev, newItem])
   }
 
   const validate = () => {
@@ -242,6 +256,7 @@ export default function ProformaEdit() {
         <ProductSearch
           onAdd={handleAddProduct}
           onNavigateToCreate={() => navigate('/products/new')}
+          excludedProductIds={items.map(item => item.productId).filter((id): id is number => id !== undefined)}
         />
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">

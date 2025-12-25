@@ -8,7 +8,11 @@ export class StatsController {
     constructor(private statsService: StatsService) { }
 
     @Get()
-    getStats(@Query('period') period: string) {
-        return this.statsService.getStats(period);
+    getStats(
+        @Query('period') period: string,
+        @Query('from') from?: string,
+        @Query('to') to?: string
+    ) {
+        return this.statsService.getStats(period, from, to);
     }
 }

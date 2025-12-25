@@ -15,6 +15,7 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProformaInvoicesModule } from './proforma-invoices/proforma-invoices.module';
 import { StatsModule } from './stats/stats.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { StatsModule } from './stats/stats.module';
     PaymentsModule,
     ProformaInvoicesModule,
     StatsModule,
+    DashboardModule,
   ],
   providers: [
     {

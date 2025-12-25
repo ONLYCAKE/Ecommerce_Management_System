@@ -1,7 +1,32 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-// Matching backend-v2 routes/stats.ts getDateRange helper
+/**
+ * ==========================================
+ * REVENUE CALCULATION RULES (Single Source of Truth)
+ * ==========================================
+ * 
+ * DEFINITIONS:
+ * - Total Revenue = Sum of invoice totals for PAID invoices only
+ *   (PAID = invoice where received payments >= invoice total)
+ * - Received Amount = Sum of all payments for PAID invoices
+ * - An invoice is PAID when: payments.sum >= invoice.total
+ * 
+ * RULES:
+ * 1. Total Revenue >= Received Amount (always)
+ * 2. Only PAID invoices contribute to revenue
+ * 3. Draft, Unpaid, Partial invoices are EXCLUDED from revenue
+ * 4. Period filter affects ALL metrics consistently
+ * 
+ * PERIOD LOGIC:
+ * - week: Last 7 days
+ * - month: Current month (1st to today)
+ * - lastMonth: Previous month (1st to last day)
+ * - quarter: Last 3 months
+ * - year: Current year (Jan 1 to today)
+ */
+
+// Helper: Get date range for period
 function getDateRange(period: string): { startDate: Date; endDate: Date } {
     const now = new Date();
     const endDate = new Date(now);
@@ -19,7 +44,7 @@ function getDateRange(period: string): { startDate: Date; endDate: Date } {
             break;
         case 'lastMonth':
             startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            endDate.setDate(0);
+            endDate.setDate(0); // Last day of previous month
             break;
         case 'quarter':
             startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
@@ -38,56 +63,239 @@ function getDateRange(period: string): { startDate: Date; endDate: Date } {
 export class StatsService {
     constructor(private prisma: PrismaService) { }
 
-    // Matching backend-v2 routes/stats.ts GET / (lines 41-146)
-    async getStats(period: string = 'month') {
-        const { startDate, endDate } = getDateRange(period);
-
-        const [users, suppliers, buyers, products, draftCount] = await Promise.all([
-            this.prisma.user.count({ where: { isArchived: false } }).catch(() => 0),
-            this.prisma.supplier.count().catch(() => 0),
-            this.prisma.buyer.count().catch(() => 0),
-            this.prisma.product.count().catch(() => 0),
-            this.prisma.invoice.count({ where: { status: 'Draft' } }).catch(() => 0),
-        ]);
-
-        // Get all non-draft invoices with payments
-        const allInvoices = await this.prisma.invoice.findMany({
-            where: { status: { notIn: ['Draft'] } },
-            include: { payments: true },
-        });
-
-        // Calculate completed count
-        const completedInvoices = allInvoices.filter((inv: any) => {
-            const receivedAmount = inv.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
-            return receivedAmount >= inv.total;
-        });
-        const completedCount = completedInvoices.length;
-
-        // Calculate total sales for the selected period
+    /**
+     * UNIFIED REVENUE METRICS
+     * Single source of truth for all revenue calculations
+     */
+    private async getRevenueMetrics(period: string, startDate: Date, endDate: Date) {
+        // Get all non-draft invoices within the period with their payments
         const periodInvoices = await this.prisma.invoice.findMany({
             where: {
                 status: { notIn: ['Draft'] },
                 createdAt: { gte: startDate, lte: endDate },
             },
+            include: { payments: true },
         });
-        const totalSales = periodInvoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
 
-        // Revenue by month (last 12 months)
+        // Calculate for each invoice
+        let totalRevenue = 0;        // Sum of PAID invoice totals
+        let receivedAmount = 0;      // Sum of payments for PAID invoices
+        let paidCount = 0;           // Count of PAID invoices
+        let unpaidCount = 0;         // Count of UNPAID invoices
+        let partialCount = 0;        // Count of PARTIAL invoices
+
+        // For graph data - collect PAID invoices by date
+        const paidInvoices: Array<{ createdAt: Date; total: number; received: number }> = [];
+
+        for (const inv of periodInvoices) {
+            const invReceived = inv.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+            const invTotal = Number(inv.total || 0);
+
+            if (invReceived >= invTotal) {
+                // PAID invoice - contributes to revenue
+                totalRevenue += invTotal;
+                receivedAmount += invReceived;
+                paidCount++;
+                paidInvoices.push({
+                    createdAt: inv.createdAt,
+                    total: invTotal,
+                    received: invReceived
+                });
+            } else if (invReceived > 0) {
+                // PARTIAL - does NOT contribute to revenue
+                partialCount++;
+            } else {
+                // UNPAID - does NOT contribute to revenue
+                unpaidCount++;
+            }
+        }
+
+        return {
+            totalRevenue,      // Sum of PAID invoice totals
+            receivedAmount,    // Sum of payments for PAID invoices  
+            paidCount,
+            unpaidCount,
+            partialCount,
+            paidInvoices,      // For graph data
+            allInvoices: periodInvoices.length,
+        };
+    }
+
+    /**
+     * Generate graph data points based on period
+     */
+    private generateGraphData(
+        period: string,
+        paidInvoices: Array<{ createdAt: Date; total: number }>,
+        startDate: Date,
+        endDate: Date
+    ): Array<{ label: string; total: number }> {
         const now = new Date();
-        const months: Array<{ key: string; year: number; month: number; total: number }> = [];
-        for (let i = 11; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            months.push({ key, year: d.getFullYear(), month: d.getMonth(), total: 0 });
-        }
-        const byKey = new Map(months.map((m) => [m.key, m] as const));
 
-        for (const inv of completedInvoices as any[]) {
-            const d = inv.createdAt as Date;
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            if (byKey.has(key)) (byKey.get(key) as any).total += Number(inv.total || 0);
+        if (period === 'week') {
+            // Last 7 days (day-wise)
+            const days: Array<{ key: string; date: Date; total: number }> = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(now.getDate() - i);
+                d.setHours(0, 0, 0, 0);
+                const key = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+                days.push({ key, date: d, total: 0 });
+            }
+
+            for (const inv of paidInvoices) {
+                const invDate = new Date(inv.createdAt);
+                invDate.setHours(0, 0, 0, 0);
+                const day = days.find(d => d.date.getTime() === invDate.getTime());
+                if (day) {
+                    day.total += inv.total;
+                }
+            }
+            return days.map(d => ({ label: d.key, total: d.total }));
+
+        } else if (period === 'month' || period === 'lastMonth') {
+            // Month (week-wise)
+            const monthStart = period === 'lastMonth'
+                ? new Date(now.getFullYear(), now.getMonth() - 1, 1)
+                : new Date(now.getFullYear(), now.getMonth(), 1);
+            const monthEnd = period === 'lastMonth'
+                ? new Date(now.getFullYear(), now.getMonth(), 0)
+                : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+            const weeks: Array<{ label: string; start: Date; end: Date; total: number }> = [];
+            let weekStart = new Date(monthStart);
+            let weekNum = 1;
+
+            while (weekStart <= monthEnd) {
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
+                if (weekEnd > monthEnd) weekEnd.setTime(monthEnd.getTime());
+
+                weeks.push({
+                    label: `Week ${weekNum}`,
+                    start: new Date(weekStart),
+                    end: new Date(weekEnd),
+                    total: 0
+                });
+                weekStart.setDate(weekStart.getDate() + 7);
+                weekNum++;
+            }
+
+            for (const inv of paidInvoices) {
+                const invDate = new Date(inv.createdAt);
+                const week = weeks.find(w => invDate >= w.start && invDate <= w.end);
+                if (week) {
+                    week.total += inv.total;
+                }
+            }
+            return weeks.map(w => ({ label: w.label, total: w.total }));
+
+        } else if (period === 'quarter') {
+            // Last 3 months (month-wise)
+            const months: Array<{ key: string; year: number; month: number; total: number }> = [];
+            for (let i = 2; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const key = `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
+                months.push({ key, year: d.getFullYear(), month: d.getMonth(), total: 0 });
+            }
+
+            for (const inv of paidInvoices) {
+                const d = new Date(inv.createdAt);
+                const month = months.find(m => m.year === d.getFullYear() && m.month === d.getMonth());
+                if (month) {
+                    month.total += inv.total;
+                }
+            }
+            return months.map(m => ({ label: m.key, total: m.total }));
+
+        } else {
+            // Year - last 12 months (month-wise)
+            const months: Array<{ key: string; year: number; month: number; total: number }> = [];
+            for (let i = 11; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                months.push({ key, year: d.getFullYear(), month: d.getMonth(), total: 0 });
+            }
+
+            for (const inv of paidInvoices) {
+                const d = new Date(inv.createdAt);
+                const month = months.find(m => m.year === d.getFullYear() && m.month === d.getMonth());
+                if (month) {
+                    month.total += inv.total;
+                }
+            }
+            return months.map(m => ({ label: m.key, total: m.total }));
         }
-        const revenueByMonth = months.map((m) => ({ label: m.key, total: m.total }));
+    }
+
+    /**
+     * Main stats endpoint
+     * Accepts optional from/to for custom date ranges
+     */
+    async getStats(period: string = 'month', from?: string, to?: string) {
+        let startDate: Date;
+        let endDate: Date;
+
+        // Use custom date range if provided
+        if (from && to) {
+            startDate = new Date(from);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(to);
+            endDate.setHours(23, 59, 59, 999);
+            period = 'custom';
+        } else {
+            const range = getDateRange(period);
+            startDate = range.startDate;
+            endDate = range.endDate;
+        }
+
+        console.log(`[Stats] Period: ${period}, From: ${startDate.toISOString()}, To: ${endDate.toISOString()}`);
+
+        // Get counts (not period-filtered - for entity counts)
+        const [users, suppliers, buyers, products] = await Promise.all([
+            this.prisma.user.count({ where: { isArchived: false } }).catch(() => 0),
+            this.prisma.supplier.count().catch(() => 0),
+            this.prisma.buyer.count().catch(() => 0),
+            this.prisma.product.count().catch(() => 0),
+        ]);
+
+        // Get period-filtered draft count
+        const periodDraftCount = await this.prisma.invoice.count({
+            where: {
+                status: 'Draft',
+                createdAt: { gte: startDate, lte: endDate }
+            }
+        }).catch(() => 0);
+
+        // Get all-time completed count (for KPI card)
+        const allInvoices = await this.prisma.invoice.findMany({
+            where: { status: { notIn: ['Draft'] } },
+            include: { payments: true },
+        });
+        const completedCount = allInvoices.filter((inv: any) => {
+            const received = inv.payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+            return received >= Number(inv.total || 0);
+        }).length;
+
+        // ==========================================
+        // UNIFIED REVENUE METRICS (period-filtered)
+        // ==========================================
+        const revenueMetrics = await this.getRevenueMetrics(period, startDate, endDate);
+
+        // Generate graph data from PAID invoices only
+        const revenueByMonth = this.generateGraphData(
+            period,
+            revenueMetrics.paidInvoices,
+            startDate,
+            endDate
+        );
+
+        // Validate: Total Revenue >= Received Amount
+        console.log(`[Stats] Period: ${period}`);
+        console.log(`[Stats] Total Revenue: ${revenueMetrics.totalRevenue}`);
+        console.log(`[Stats] Received Amount: ${revenueMetrics.receivedAmount}`);
+        console.log(`[Stats] Graph Sum: ${revenueByMonth.reduce((s, d) => s + d.total, 0)}`);
 
         // Today's stats
         const todayStart = new Date();
@@ -121,10 +329,22 @@ export class StatsService {
 
         return {
             totals: { users, suppliers, buyers, products },
-            invoices: { draft: draftCount, completed: completedCount },
+            invoices: { draft: periodDraftCount, completed: completedCount },
             revenueByMonth,
             recentProducts,
-            totalSales,
+
+            // UNIFIED REVENUE METRICS (period-filtered)
+            totalSales: revenueMetrics.totalRevenue,      // Total Revenue = PAID invoice totals
+            totalRevenue: revenueMetrics.totalRevenue,    // Alias for frontend
+            receivedAmount: revenueMetrics.receivedAmount, // Payments received for PAID invoices
+            balancePending: revenueMetrics.totalRevenue - revenueMetrics.receivedAmount, // Balance = Sales - Received
+
+            // Period-filtered invoice counts
+            paidInvoicesCount: revenueMetrics.paidCount,
+            unpaidInvoicesCount: revenueMetrics.unpaidCount,
+            partialInvoicesCount: revenueMetrics.partialCount,
+            periodInvoicesCount: revenueMetrics.paidCount + revenueMetrics.unpaidCount + revenueMetrics.partialCount + periodDraftCount,
+
             todayStats,
             period,
         };

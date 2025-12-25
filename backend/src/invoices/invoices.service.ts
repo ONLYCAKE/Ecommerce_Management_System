@@ -82,8 +82,9 @@ export class InvoicesService {
     }
 
     // Matching backend-v2 invoiceController.ts getInvoiceSummary (lines 103-155)
-    async getSummary(query: { status?: string; paymentMethod?: string }) {
-        const { status, paymentMethod } = query;
+    // Extended to support date range filtering for Dashboard period selection
+    async getSummary(query: { status?: string; paymentMethod?: string; dateFrom?: string; dateTo?: string }) {
+        const { status, paymentMethod, dateFrom, dateTo } = query;
         const where: any = {};
 
         if (status && status !== 'All') {
@@ -91,6 +92,21 @@ export class InvoicesService {
         }
         if (paymentMethod) {
             where.paymentMethod = { in: paymentMethod.split(',') };
+        }
+
+        // Add date range filter for period selection
+        if (dateFrom || dateTo) {
+            where.createdAt = {};
+            if (dateFrom) {
+                const from = new Date(dateFrom);
+                from.setHours(0, 0, 0, 0);
+                where.createdAt.gte = from;
+            }
+            if (dateTo) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                where.createdAt.lte = to;
+            }
         }
 
         const invoices = await this.prisma.invoice.findMany({
@@ -121,7 +137,7 @@ export class InvoicesService {
 
         const last = await this.prisma.invoice.findFirst({
             where: { invoiceNo: { startsWith: prefix } },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { invoiceNo: 'desc' },  // Order by invoiceNo, not createdAt!
             select: { invoiceNo: true },
         });
 
@@ -202,11 +218,20 @@ export class InvoicesService {
             }];
         }
 
+        // Generate invoice number BEFORE transaction to avoid deadlocks
+        let finalInvoiceNo: string;
+
+        if (body.status === 'Draft') {
+            // Draft invoice: use temporary number
+            finalInvoiceNo = `DRAFT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        } else {
+            // Regular invoice: auto-generate next sequential number
+            const { invoiceNo: nextInvoiceNo } = await this.getNextInvoiceNo();
+            finalInvoiceNo = nextInvoiceNo;
+        }
+
         // Transaction for atomicity
         const invoiceId = await this.prisma.$transaction(async (tx) => {
-            const finalInvoiceNo = body.status === 'Draft'
-                ? `DRAFT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-                : invoiceNo;
 
             const invoiceData: any = {
                 invoiceNo: finalInvoiceNo,
