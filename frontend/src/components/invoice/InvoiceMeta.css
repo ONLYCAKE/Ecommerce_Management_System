@@ -66,13 +66,40 @@
     background-color: transparent;
 }
 
-/* Time selector */
+/* Time selector - Side by side with calendar */
 .react-datepicker__time-container {
     border-left: 1px solid #e5e7eb;
+    width: 100px;
+}
+
+/* Make calendar and time container same height */
+.react-datepicker--time {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+/* Ensure proper layout when time is shown */
+.react-datepicker__time-container .react-datepicker__time {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.react-datepicker__time-container .react-datepicker__time-box {
+    height: 100%;
+}
+
+.react-datepicker__time-container .react-datepicker__time-list {
+    height: 100% !important;
+    max-height: 220px;
+    overflow-y: auto;
 }
 
 .react-datepicker__time-list-item {
     transition: all 0.15s ease;
+    padding: 6px 10px !important;
+    font-size: 0.875rem;
 }
 
 .react-datepicker__time-list-item:hover {
@@ -84,6 +111,16 @@
     background-color: #4f46e5 !important;
     color: white !important;
     font-weight: 600;
+}
+
+/* Time caption styling */
+.react-datepicker__time-container .react-datepicker-time__header {
+    background-color: #f9fafb;
+    padding: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #111827;
+    border-bottom: 1px solid #e5e7eb;
 }
 
 /* Navigation arrows */
@@ -99,7 +136,8 @@
 /* Clear button */
 .react-datepicker__close-icon {
     position: absolute;
-    inset-inline-end: 0.5rem; /* right in LTR, left in RTL */
+    inset-inline-end: 0.5rem;
+    /* right in LTR, left in RTL */
     top: 50%;
     transform: translateY(-50%);
     width: 1.75rem;
@@ -178,4 +216,85 @@
     overflow: hidden;
     padding: 0;
     border: 0;
+}
+
+/* ============================================
+   DELIVERY DATE & TIME - Side by Side Layout
+   ============================================ */
+
+/* Main container for date+time pickers */
+.react-datepicker {
+    display: inline-flex;
+    flex-direction: row;
+}
+
+/* Calendar section */
+.react-datepicker__month-container {
+    flex-shrink: 0;
+}
+
+/* Time section - appears on the right */
+.react-datepicker__time-container {
+    display: flex;
+    flex-direction: column;
+    min-width: 95px;
+    border-left: 1px solid #e5e7eb;
+}
+
+/* Time header */
+.react-datepicker-time__header {
+    background-color: #f9fafb;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* Time list container */
+.react-datepicker__time {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.react-datepicker__time-box {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Time list scrollable area */
+.react-datepicker__time-list {
+    flex: 1;
+    overflow-y: auto !important;
+    max-height: 196px !important;
+    height: auto !important;
+    padding: 4px 0;
+}
+
+/* Individual time item */
+.react-datepicker__time-list-item {
+    padding: 6px 12px !important;
+    font-size: 0.8rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.react-datepicker__time-list-item:hover {
+    background-color: #e0e7ff;
+    color: #3730a3;
+}
+
+.react-datepicker__time-list-item--selected {
+    background-color: #4f46e5 !important;
+    color: white !important;
+    font-weight: 600;
+}
+
+/* Ensure rounded corners for the time container edge */
+.react-datepicker__time-container {
+    border-top-right-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
 }

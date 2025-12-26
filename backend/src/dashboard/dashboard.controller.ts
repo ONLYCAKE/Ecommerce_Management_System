@@ -11,13 +11,15 @@ export class DashboardController {
      * GET /api/dashboard/analytics
      * Returns aggregated analytics data for dashboard
      * Supports date range filtering via from, to, or period
+     * Supports buyer-specific filtering via buyerId
      */
     @Get('analytics')
     getAnalytics(
         @Query('from') from?: string,
         @Query('to') to?: string,
-        @Query('period') period?: string
+        @Query('period') period?: string,
+        @Query('buyerId') buyerId?: string
     ) {
-        return this.dashboardService.getAnalytics(from, to, period);
+        return this.dashboardService.getAnalytics(from, to, period, buyerId ? parseInt(buyerId) : undefined);
     }
 }

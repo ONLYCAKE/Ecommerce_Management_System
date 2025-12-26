@@ -82,9 +82,9 @@ export class InvoicesService {
     }
 
     // Matching backend-v2 invoiceController.ts getInvoiceSummary (lines 103-155)
-    // Extended to support date range filtering for Dashboard period selection
-    async getSummary(query: { status?: string; paymentMethod?: string; dateFrom?: string; dateTo?: string }) {
-        const { status, paymentMethod, dateFrom, dateTo } = query;
+    // Extended to support date range and buyer filtering for Dashboard
+    async getSummary(query: { status?: string; paymentMethod?: string; dateFrom?: string; dateTo?: string; buyerId?: string }) {
+        const { status, paymentMethod, dateFrom, dateTo, buyerId } = query;
         const where: any = {};
 
         if (status && status !== 'All') {
@@ -92,6 +92,11 @@ export class InvoicesService {
         }
         if (paymentMethod) {
             where.paymentMethod = { in: paymentMethod.split(',') };
+        }
+
+        // Add buyer filter if specified
+        if (buyerId) {
+            where.buyerId = parseInt(buyerId);
         }
 
         // Add date range filter for period selection

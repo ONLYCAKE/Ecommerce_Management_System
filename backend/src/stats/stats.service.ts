@@ -66,57 +66,64 @@ export class StatsService {
     /**
      * UNIFIED REVENUE METRICS
      * Single source of truth for all revenue calculations
+     * @param buyerId - Optional buyer ID to filter metrics
      */
-    private async getRevenueMetrics(period: string, startDate: Date, endDate: Date) {
+    private async getRevenueMetrics(period: string, startDate: Date, endDate: Date, buyerId?: number) {
+        // Build where clause with optional buyer filter
+        const where: any = {
+            status: { notIn: ['Draft'] },
+            createdAt: { gte: startDate, lte: endDate },
+        };
+        if (buyerId) {
+            where.buyerId = buyerId;
+        }
+
         // Get all non-draft invoices within the period with their payments
         const periodInvoices = await this.prisma.invoice.findMany({
-            where: {
-                status: { notIn: ['Draft'] },
-                createdAt: { gte: startDate, lte: endDate },
-            },
+            where,
             include: { payments: true },
         });
 
         // Calculate for each invoice
-        let totalRevenue = 0;        // Sum of PAID invoice totals
-        let receivedAmount = 0;      // Sum of payments for PAID invoices
+        let totalRevenue = 0;        // Sum of ALL invoice totals (not just paid)
+        let receivedAmount = 0;      // Sum of all payments  
         let paidCount = 0;           // Count of PAID invoices
         let unpaidCount = 0;         // Count of UNPAID invoices
         let partialCount = 0;        // Count of PARTIAL invoices
 
-        // For graph data - collect PAID invoices by date
-        const paidInvoices: Array<{ createdAt: Date; total: number; received: number }> = [];
+        // For graph data - collect ALL invoices by date (not just paid)
+        const allInvoicesForGraph: Array<{ createdAt: Date; total: number; received: number }> = [];
 
         for (const inv of periodInvoices) {
             const invReceived = inv.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
             const invTotal = Number(inv.total || 0);
 
+            // Add ALL invoices to graph data (real-time sales)
+            totalRevenue += invTotal;       // Count all sales
+            receivedAmount += invReceived;  // Count all received
+
+            allInvoicesForGraph.push({
+                createdAt: inv.createdAt,
+                total: invTotal,
+                received: invReceived
+            });
+
             if (invReceived >= invTotal) {
-                // PAID invoice - contributes to revenue
-                totalRevenue += invTotal;
-                receivedAmount += invReceived;
                 paidCount++;
-                paidInvoices.push({
-                    createdAt: inv.createdAt,
-                    total: invTotal,
-                    received: invReceived
-                });
             } else if (invReceived > 0) {
-                // PARTIAL - does NOT contribute to revenue
                 partialCount++;
             } else {
-                // UNPAID - does NOT contribute to revenue
                 unpaidCount++;
             }
         }
 
         return {
-            totalRevenue,      // Sum of PAID invoice totals
-            receivedAmount,    // Sum of payments for PAID invoices  
+            totalRevenue,      // Sum of ALL invoice totals
+            receivedAmount,    // Sum of all payments  
             paidCount,
             unpaidCount,
             partialCount,
-            paidInvoices,      // For graph data
+            paidInvoices: allInvoicesForGraph,  // Now includes ALL invoices for graph
             allInvoices: periodInvoices.length,
         };
     }
@@ -232,8 +239,9 @@ export class StatsService {
     /**
      * Main stats endpoint
      * Accepts optional from/to for custom date ranges
+     * Accepts optional buyerId for buyer-specific filtering
      */
-    async getStats(period: string = 'month', from?: string, to?: string) {
+    async getStats(period: string = 'month', from?: string, to?: string, buyerId?: number) {
         let startDate: Date;
         let endDate: Date;
 
@@ -250,7 +258,7 @@ export class StatsService {
             endDate = range.endDate;
         }
 
-        console.log(`[Stats] Period: ${period}, From: ${startDate.toISOString()}, To: ${endDate.toISOString()}`);
+        console.log(`[Stats] Period: ${period}, From: ${startDate.toISOString()}, To: ${endDate.toISOString()}, BuyerId: ${buyerId || 'ALL'}`);
 
         // Get counts (not period-filtered - for entity counts)
         const [users, suppliers, buyers, products] = await Promise.all([
@@ -260,17 +268,29 @@ export class StatsService {
             this.prisma.product.count().catch(() => 0),
         ]);
 
+        // Build invoice where clause with optional buyer filter
+        const invoiceWhereBase: any = {
+            createdAt: { gte: startDate, lte: endDate }
+        };
+        if (buyerId) {
+            invoiceWhereBase.buyerId = buyerId;
+        }
+
         // Get period-filtered draft count
         const periodDraftCount = await this.prisma.invoice.count({
             where: {
+                ...invoiceWhereBase,
                 status: 'Draft',
-                createdAt: { gte: startDate, lte: endDate }
             }
         }).catch(() => 0);
 
-        // Get all-time completed count (for KPI card)
+        // Get all-time completed count (for KPI card) - also apply buyer filter if present
+        const allInvoicesWhere: any = { status: { notIn: ['Draft'] } };
+        if (buyerId) {
+            allInvoicesWhere.buyerId = buyerId;
+        }
         const allInvoices = await this.prisma.invoice.findMany({
-            where: { status: { notIn: ['Draft'] } },
+            where: allInvoicesWhere,
             include: { payments: true },
         });
         const completedCount = allInvoices.filter((inv: any) => {
@@ -281,7 +301,7 @@ export class StatsService {
         // ==========================================
         // UNIFIED REVENUE METRICS (period-filtered)
         // ==========================================
-        const revenueMetrics = await this.getRevenueMetrics(period, startDate, endDate);
+        const revenueMetrics = await this.getRevenueMetrics(period, startDate, endDate, buyerId);
 
         // Generate graph data from PAID invoices only
         const revenueByMonth = this.generateGraphData(

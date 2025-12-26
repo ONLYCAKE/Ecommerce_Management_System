@@ -11,8 +11,9 @@ export class StatsController {
     getStats(
         @Query('period') period: string,
         @Query('from') from?: string,
-        @Query('to') to?: string
+        @Query('to') to?: string,
+        @Query('buyerId') buyerId?: string
     ) {
-        return this.statsService.getStats(period, from, to);
+        return this.statsService.getStats(period, from, to, buyerId ? parseInt(buyerId) : undefined);
     }
 }

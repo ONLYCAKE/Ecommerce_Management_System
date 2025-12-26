@@ -35,7 +35,11 @@ import {
   ChevronDown,
   ArrowUpDown,
   X,
-  Save
+  Save,
+  Globe,
+  MapPin,
+  Building2,
+  Map
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import CountryStateCitySelect from '../components/common/CountryStateCitySelect'
@@ -105,12 +109,27 @@ export default function Dashboard() {
     productWiseSales: Array<{ id: number; name: string; total: number; percentage: number }>
     topBuyersTable: Array<{ id: number; buyerName: string; totalInvoices: number; totalSales: number; pendingBalance: number }>
     collectionSummary: { totalSales: number; totalReceived: number; pendingAmount: number; collectionPercentage: number; invoiceCount: number }
+    buyerFilter?: { id: number; name: string } | null
+    // Location-wise sales
+    salesByCountry: Array<{ name: string; total: number; percentage: number }>
+    salesByState: Array<{ name: string; total: number; percentage: number }>
+    salesByCity: Array<{ name: string; total: number; percentage: number }>
+    salesByArea: Array<{ name: string; total: number; percentage: number }>
   }>({
     buyerWiseSales: [],
     productWiseSales: [],
     topBuyersTable: [],
-    collectionSummary: { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 }
+    collectionSummary: { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 },
+    buyerFilter: null,
+    salesByCountry: [],
+    salesByState: [],
+    salesByCity: [],
+    salesByArea: []
   })
+
+  // Buyer filter from URL (source of truth)
+  const buyerIdFromUrl = searchParams.get('buyerId')
+  const buyerId = buyerIdFromUrl ? parseInt(buyerIdFromUrl) : null
 
   // Global Date Range Filter State
   const [dateFrom, setDateFrom] = useState<Date | null>(() => {
@@ -176,6 +195,20 @@ export default function Dashboard() {
     }
   }
 
+  // Set buyer filter - updates URL to filter dashboard
+  const handleBuyerFilter = (buyerId: number) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('buyerId', buyerId.toString())
+    setSearchParams(params, { replace: true })
+  }
+
+  // Clear buyer filter - removes buyerId from URL
+  const handleClearBuyerFilter = () => {
+    const params = new URLSearchParams(searchParams)
+    params.delete('buyerId')
+    setSearchParams(params, { replace: true })
+  }
+
   // Load stats
   const load = async () => {
     try {
@@ -187,6 +220,10 @@ export default function Dashboard() {
         const fromStr = dateFrom.toISOString().split('T')[0]
         const toStr = dateTo.toISOString().split('T')[0]
         url += `&from=${fromStr}&to=${toStr}`
+      }
+      // Add buyer filter if present
+      if (buyerId) {
+        url += `&buyerId=${buyerId}`
       }
 
       const { data } = await api.get<Stats>(url)
@@ -210,6 +247,10 @@ export default function Dashboard() {
       }
       if (dateTo) {
         params.append('dateTo', dateTo.toISOString().split('T')[0])
+      }
+      // Add buyer filter if present
+      if (buyerId) {
+        params.append('buyerId', buyerId.toString())
       }
 
       if (params.toString()) {
@@ -264,6 +305,8 @@ export default function Dashboard() {
       params.append('period', period)
       if (dateFrom) params.append('from', dateFrom.toISOString().split('T')[0])
       if (dateTo) params.append('to', dateTo.toISOString().split('T')[0])
+      // Add buyer filter if present
+      if (buyerId) params.append('buyerId', buyerId.toString())
 
       const { data } = await api.get(`/dashboard/analytics?${params.toString()}`)
       if (data) {
@@ -271,7 +314,13 @@ export default function Dashboard() {
           buyerWiseSales: data.buyerWiseSales || [],
           productWiseSales: data.productWiseSales || [],
           topBuyersTable: data.topBuyersTable || [],
-          collectionSummary: data.collectionSummary || { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 }
+          collectionSummary: data.collectionSummary || { totalSales: 0, totalReceived: 0, pendingAmount: 0, collectionPercentage: 0, invoiceCount: 0 },
+          buyerFilter: data.buyerFilter || null,
+          // Location-wise sales
+          salesByCountry: data.salesByCountry || [],
+          salesByState: data.salesByState || [],
+          salesByCity: data.salesByCity || [],
+          salesByArea: data.salesByArea || []
         })
       }
     } catch (err) {
@@ -320,12 +369,12 @@ export default function Dashboard() {
     }
   }
 
-  // Load on mount, period change, or date range change
+  // Load on mount, period change, date range change, or buyer filter change
   useEffect(() => {
     load()
     loadInvoiceSummary()
     loadAnalytics()
-  }, [period, dateFrom, dateTo])
+  }, [period, dateFrom, dateTo, buyerId])
 
   // Auto-refresh every 30 seconds for real-time data
   useEffect(() => {
@@ -479,6 +528,30 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ===== BUYER FILTER INDICATOR ===== */}
+      {analytics.buyerFilter && (
+        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Users size={20} className="text-purple-600" />
+            </div>
+            <div>
+              <p className="text-sm text-purple-700 font-medium">
+                Showing analytics for buyer:
+              </p>
+              <p className="text-lg font-bold text-purple-900">{analytics.buyerFilter.name}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleClearBuyerFilter}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-white border border-purple-300 hover:bg-purple-100 rounded-lg transition-colors"
+          >
+            <X size={16} />
+            Clear Filter
+          </button>
+        </div>
+      )}
 
       {/* ===== KPI CARDS ROW ===== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -671,7 +744,7 @@ export default function Dashboard() {
                   paddingAngle={3}
                   dataKey="total"
                   nameKey="name"
-                  label={({ name, percent }) => `${(String(name || '')).slice(0, 8)}.. ${((percent || 0) * 100).toFixed(0)}%`}
+                  label={false}
                   labelLine={false}
                 >
                   {analytics.buyerWiseSales.map((entry, index) => (
@@ -687,7 +760,13 @@ export default function Dashboard() {
               <div key={buyer.id} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}></div>
-                  <span className="text-gray-700 truncate max-w-[150px]">{buyer.name}</span>
+                  <button
+                    onClick={() => handleBuyerFilter(buyer.id)}
+                    className="text-purple-600 hover:text-purple-800 hover:underline truncate max-w-[150px] text-left"
+                    title={`Filter dashboard by ${buyer.name}`}
+                  >
+                    {buyer.name}
+                  </button>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-gray-500">{buyer.percentage}%</span>
@@ -726,7 +805,7 @@ export default function Dashboard() {
                   paddingAngle={3}
                   dataKey="total"
                   nameKey="name"
-                  label={({ name, percent }) => `${(String(name || '')).slice(0, 8)}.. ${((percent || 0) * 100).toFixed(0)}%`}
+                  label={false}
                   labelLine={false}
                 >
                   {analytics.productWiseSales.map((entry, index) => (
@@ -867,31 +946,250 @@ export default function Dashboard() {
         </div>
 
         {/* Today's Summary */}
-        <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-sm p-5 text-white">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
           <div className="flex items-center gap-2 mb-4">
-            <div className="p-2 bg-white/20 rounded-lg">
-              <Calendar size={18} />
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Calendar size={18} className="text-indigo-600" />
             </div>
-            <h3 className="font-semibold">Today</h3>
+            <h3 className="font-semibold text-gray-900">Today</h3>
           </div>
           <div className="space-y-3">
-            <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg">
-              <span className="text-sm opacity-90">Invoices</span>
-              <span className="text-lg font-bold">{stats.invoices.draft + (stats.paidInvoicesCount || 0)}</span>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <span className="text-sm text-gray-600">Invoices</span>
+              <span className="text-lg font-bold text-indigo-600">{stats.invoices.draft + (stats.paidInvoicesCount || 0)}</span>
             </div>
-            <div className="flex justify-between items-center p-3 bg-white/10 rounded-lg">
-              <span className="text-sm opacity-90">Revenue</span>
-              <span className="text-lg font-bold">{formatINR(totalRevenue)}</span>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <span className="text-sm text-gray-600">Revenue</span>
+              <span className="text-lg font-bold text-green-600">{formatINR(totalRevenue)}</span>
             </div>
             <button
               onClick={() => {
                 const today = new Date().toISOString().split('T')[0]
                 navigate(`/invoices?from=${today}&to=${today}`)
               }}
-              className="w-full mt-2 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
+              className="w-full mt-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
             >
               View Daybook →
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== LOCATION-WISE SALES CHARTS (2x2 Grid) ===== */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Country-wise Sales */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Globe size={18} className="text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Sales by Country</h3>
+              <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <div className="w-1/2 h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.salesByCountry}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={35}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="total"
+                    nameKey="name"
+                    label={false}
+                  >
+                    {analytics.salesByCountry.map((_, index) => (
+                      <Cell key={`country-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: any) => formatINR(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-1/2 space-y-1.5 max-h-40 overflow-y-auto">
+              {analytics.salesByCountry.map((item, index) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}></div>
+                    <span className="text-gray-700 truncate max-w-[80px]">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">{item.percentage}%</span>
+                    <span className="font-medium text-gray-900">{formatINR(item.total)}</span>
+                  </div>
+                </div>
+              ))}
+              {analytics.salesByCountry.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No data</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* State-wise Sales */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <MapPin size={18} className="text-green-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Sales by State</h3>
+              <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <div className="w-1/2 h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.salesByState}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={35}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="total"
+                    nameKey="name"
+                    label={false}
+                  >
+                    {analytics.salesByState.map((_, index) => (
+                      <Cell key={`state-${index}`} fill={CHART_COLORS[(index + 1) % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: any) => formatINR(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-1/2 space-y-1.5 max-h-40 overflow-y-auto">
+              {analytics.salesByState.map((item, index) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[(index + 1) % CHART_COLORS.length] }}></div>
+                    <span className="text-gray-700 truncate max-w-[80px]">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">{item.percentage}%</span>
+                    <span className="font-medium text-gray-900">{formatINR(item.total)}</span>
+                  </div>
+                </div>
+              ))}
+              {analytics.salesByState.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No data</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* City-wise Sales */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Building2 size={18} className="text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Sales by City</h3>
+              <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <div className="w-1/2 h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.salesByCity}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={35}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="total"
+                    nameKey="name"
+                    label={false}
+                  >
+                    {analytics.salesByCity.map((_, index) => (
+                      <Cell key={`city-${index}`} fill={CHART_COLORS[(index + 2) % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: any) => formatINR(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-1/2 space-y-1.5 max-h-40 overflow-y-auto">
+              {analytics.salesByCity.map((item, index) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[(index + 2) % CHART_COLORS.length] }}></div>
+                    <span className="text-gray-700 truncate max-w-[80px]">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">{item.percentage}%</span>
+                    <span className="font-medium text-gray-900">{formatINR(item.total)}</span>
+                  </div>
+                </div>
+              ))}
+              {analytics.salesByCity.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No data</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Area-wise Sales */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Map size={18} className="text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Sales by Area</h3>
+              <p className="text-xs text-gray-500">{periodLabels[period] || 'Selected Period'}</p>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <div className="w-1/2 h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.salesByArea}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={35}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="total"
+                    nameKey="name"
+                    label={false}
+                  >
+                    {analytics.salesByArea.map((_, index) => (
+                      <Cell key={`area-${index}`} fill={CHART_COLORS[(index + 3) % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: any) => formatINR(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-1/2 space-y-1.5 max-h-40 overflow-y-auto">
+              {analytics.salesByArea.map((item, index) => (
+                <div key={item.name} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[(index + 3) % CHART_COLORS.length] }}></div>
+                    <span className="text-gray-700 truncate max-w-[80px]">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">{item.percentage}%</span>
+                    <span className="font-medium text-gray-900">{formatINR(item.total)}</span>
+                  </div>
+                </div>
+              ))}
+              {analytics.salesByArea.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No data</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -931,7 +1229,13 @@ export default function Dashboard() {
                 <tr key={buyer.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="py-3 px-4 text-gray-500">{index + 1}</td>
                   <td className="py-3 px-4">
-                    <span className="font-medium text-gray-900">{buyer.buyerName}</span>
+                    <button
+                      onClick={() => handleBuyerFilter(buyer.id)}
+                      className="font-medium text-purple-600 hover:text-purple-800 hover:underline text-left"
+                      title={`Filter dashboard by ${buyer.buyerName}`}
+                    >
+                      {buyer.buyerName}
+                    </button>
                   </td>
                   <td className="py-3 px-4 text-center">
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">

@@ -41,8 +41,9 @@ export class DashboardService {
     /**
      * Get all dashboard analytics in a single API call
      * Returns: buyerWiseSales, productWiseSales, topBuyersTable, collectionSummary
+     * @param buyerId - Optional buyer ID to filter all analytics to a specific buyer
      */
-    async getAnalytics(from?: string, to?: string, period: string = 'month') {
+    async getAnalytics(from?: string, to?: string, period: string = 'month', buyerId?: number) {
         let startDate: Date;
         let endDate: Date;
 
@@ -58,12 +59,20 @@ export class DashboardService {
             endDate = range.endDate;
         }
 
-        // Get all invoices with buyer and items for the period
+        // Build invoice query with optional buyer filter
+        const invoiceWhere: any = {
+            createdAt: { gte: startDate, lte: endDate },
+            status: { notIn: ['Draft'] } // Exclude drafts from analytics
+        };
+
+        // Apply buyer filter if specified
+        if (buyerId) {
+            invoiceWhere.buyerId = buyerId;
+        }
+
+        // Get invoices with buyer and items for the period
         const invoices = await this.prisma.invoice.findMany({
-            where: {
-                createdAt: { gte: startDate, lte: endDate },
-                status: { notIn: ['Draft'] } // Exclude drafts from analytics
-            },
+            where: invoiceWhere,
             include: {
                 buyer: true,
                 items: {
@@ -75,16 +84,15 @@ export class DashboardService {
             }
         });
 
-        console.log(`[Dashboard Analytics] Period: ${period}, From: ${startDate.toISOString()}, To: ${endDate.toISOString()}`);
-        console.log(`[Dashboard Analytics] Found ${invoices.length} invoices`);
-        if (invoices.length > 0) {
-            const sampleInv = invoices[0];
-            console.log(`[Dashboard Analytics] Sample invoice: ${sampleInv.invoiceNo}, items: ${sampleInv.items?.length || 0}`);
-            if (sampleInv.items && sampleInv.items.length > 0) {
-                const sampleItem = sampleInv.items[0] as any;
-                console.log(`[Dashboard Analytics] Sample item: title=${sampleItem.title}, amount=${sampleItem.amount}, qty=${sampleItem.qty}, price=${sampleItem.price}, productId=${sampleItem.productId}`);
-            }
+        // Get buyer name if filtered
+        let buyerName: string | null = null;
+        if (buyerId) {
+            const buyer = await this.prisma.buyer.findUnique({ where: { id: buyerId } });
+            buyerName = buyer?.name || null;
         }
+
+        console.log(`[Dashboard Analytics] Period: ${period}, From: ${startDate.toISOString()}, To: ${endDate.toISOString()}, BuyerId: ${buyerId || 'ALL'}`);
+        console.log(`[Dashboard Analytics] Found ${invoices.length} invoices`);
 
         // ============================
         // 1. BUYER-WISE SALES (Top 5)
@@ -192,6 +200,76 @@ export class DashboardService {
         };
 
         // ============================
+        // 5. LOCATION-WISE SALES (Top 5 each)
+        // ============================
+        const countrySalesMap = new Map<string, number>();
+        const stateSalesMap = new Map<string, number>();
+        const citySalesMap = new Map<string, number>();
+        const areaSalesMap = new Map<string, number>();
+
+        invoices.forEach(inv => {
+            const buyer = inv.buyer;
+            if (!buyer) return;
+            const amount = Number(inv.total || 0);
+
+            // Country
+            const country = buyer.country?.trim() || 'Unknown';
+            countrySalesMap.set(country, (countrySalesMap.get(country) || 0) + amount);
+
+            // State
+            const state = buyer.state?.trim() || 'Unknown';
+            stateSalesMap.set(state, (stateSalesMap.get(state) || 0) + amount);
+
+            // City
+            const city = buyer.city?.trim() || 'Unknown';
+            citySalesMap.set(city, (citySalesMap.get(city) || 0) + amount);
+
+            // Area
+            const area = buyer.area?.trim() || 'Unknown';
+            areaSalesMap.set(area, (areaSalesMap.get(area) || 0) + amount);
+        });
+
+        // Helper to convert map to sorted array with percentage (Top 5 + Others)
+        const mapToSalesArray = (map: Map<string, number>, limit: number = 5) => {
+            const entries = Array.from(map.entries())
+                .map(([name, total]) => ({ name, total }))
+                .sort((a, b) => b.total - a.total);
+
+            const totalAmount = entries.reduce((sum, e) => sum + e.total, 0);
+
+            if (entries.length <= limit) {
+                return entries.map(e => ({
+                    ...e,
+                    percentage: totalAmount > 0 ? Math.round((e.total / totalAmount) * 100) : 0
+                }));
+            }
+
+            // Top N + "Others"
+            const topN = entries.slice(0, limit);
+            const othersTotal = entries.slice(limit).reduce((sum, e) => sum + e.total, 0);
+
+            const result = topN.map(e => ({
+                ...e,
+                percentage: totalAmount > 0 ? Math.round((e.total / totalAmount) * 100) : 0
+            }));
+
+            if (othersTotal > 0) {
+                result.push({
+                    name: 'Others',
+                    total: othersTotal,
+                    percentage: totalAmount > 0 ? Math.round((othersTotal / totalAmount) * 100) : 0
+                });
+            }
+
+            return result;
+        };
+
+        const salesByCountry = mapToSalesArray(countrySalesMap);
+        const salesByState = mapToSalesArray(stateSalesMap);
+        const salesByCity = mapToSalesArray(citySalesMap);
+        const salesByArea = mapToSalesArray(areaSalesMap);
+
+        // ============================
         // RESPONSE
         // ============================
         return {
@@ -199,11 +277,18 @@ export class DashboardService {
             productWiseSales: productWiseSalesWithPercent,
             topBuyersTable,
             collectionSummary,
+            // Location-wise sales
+            salesByCountry,
+            salesByState,
+            salesByCity,
+            salesByArea,
             period,
             dateRange: {
                 from: startDate.toISOString(),
                 to: endDate.toISOString()
-            }
+            },
+            // Buyer filter info (for UI to display)
+            buyerFilter: buyerId ? { id: buyerId, name: buyerName } : null
         };
     }
 }
